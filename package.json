@@ -1,0 +1,13 @@
+{
+  "name": "llm-orchestrator-mcp",
+  "version": "1.0.0",
+  "description": "Orchestrateur MCP multi-modèles : détecte le meilleur modèle sain, en fait l'orchestrateur et délègue les tâches par spécialité. Compatible Opencode, Cursor, Claude Code, Windsurf.",
+  "main": "server.js",
+  "bin": { "llm-orchestrator-mcp": "./server.js" },
+  "scripts": {
+    "start": "node server.js",
+    "install": "bash install.sh"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}

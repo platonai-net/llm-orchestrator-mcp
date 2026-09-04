@@ -1,0 +1,19 @@
+{
+  "probeTimeoutMs": 8000,
+  "probeMaxTokens": 16,
+  "probePrompt": "ping",
+  "selection": {
+    "strategy": "score",
+    "weights": { "health": 40, "latency": 30, "context": 20, "quality": 10 }
+  },
+  "routing": {
+    "code": { "preferred": ["gpt-5", "claude-4.5"], "minScore": 55 },
+    "writing": { "preferred": ["claude-4.5", "gpt-5"], "minScore": 55 },
+    "analysis": { "preferred": ["gpt-5", "claude-4.5", "gemini-3"], "minScore": 55 },
+    "longcontext": { "preferred": ["gemini-3", "llama-4", "claude-4.5"], "minScore": 55 },
+    "multimodal": { "preferred": ["gemini-3", "gpt-5"], "minScore": 55 },
+    "cheap": { "preferred": ["mistral-large-2", "llama-4"], "minScore": 50 },
+    "local": { "preferred": ["mistral-large-2", "llama-4"], "minScore": 50 }
+  },
+  "orchestratorSystemPrompt": "Tu es l'orchestrateur. Tu analyses la demande de l'utilisateur, la décomposes en sous-tâches et choisis pour chacune le modèle le plus adapté. Tu t'appuies sur l'outil llm_delegate pour exécuter chaque sous-tâche, puis tu synthétises les résultats. Ne délègue pas les sous-tâches triviales : traite-les toi-même."
+}
