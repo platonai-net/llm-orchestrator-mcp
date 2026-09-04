@@ -1,7 +1,23 @@
 {
   "name": "llm-orchestrator-mcp",
   "version": "1.0.0",
-  "description": "Orchestrateur MCP multi-modèles : détecte le meilleur modèle sain, en fait l'orchestrateur et délègue les tâches par spécialité. Compatible Opencode, Cursor, Claude Code, Windsurf.",
+  "description": "Zero-dependency MCP server: health-checks LLMs, elects the best one as orchestrator and delegates tasks by specialty (code, writing, analysis...). Works with Opencode, Cursor, Claude Code, Windsurf.",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "orchestrator",
+    "llm",
+    "multi-model",
+    "opencode",
+    "cursor",
+    "claude-code",
+    "windsurf",
+    "gpt",
+    "claude",
+    "gemini",
+    "mistral",
+    "llama"
+  ],
   "main": "server.js",
   "bin": { "llm-orchestrator-mcp": "./server.js" },
   "scripts": {
@@ -9,5 +25,11 @@
     "install": "bash install.sh"
   },
   "engines": { "node": ">=18" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/platonai-net/llm-orchestrator-mcp.git"
+  },
+  "bugs": { "url": "https://github.com/platonai-net/llm-orchestrator-mcp/issues" },
+  "homepage": "https://github.com/platonai-net/llm-orchestrator-mcp#readme",
   "license": "MIT"
 }
