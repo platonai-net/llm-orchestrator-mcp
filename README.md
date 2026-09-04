@@ -10,7 +10,7 @@ After installation, it:
 4. **Delegates each task** to the most suitable model by task type: `code`, `writing`, `analysis`, `longcontext`, `multimodal`, `cheap`, `local` (routing rules editable in `models.json`).
 5. **Synthesizes** all sub-task results into a single answer.
 
-Works with **Opencode, Cursor, Claude Code, Windsurf** — and any MCP stdio client.
+Works with **Opencode, Cursor, Claude Code, Windsurf, Kimi Code** — and any MCP stdio client.
 
 ```
 ┌───────────────┐     MCP stdio     ┌──────────────────────────────┐
@@ -37,6 +37,12 @@ cd llm-orchestrator-mcp
 bash install.sh
 ```
 
+**Or one-liner** (no clone needed — auto-downloads to `~/.llm-orchestrator-mcp`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/install.sh | bash
+```
+
 The script auto-registers the server into:
 
 | Client | Config file |
@@ -45,14 +51,32 @@ The script auto-registers the server into:
 | Cursor | `~/.cursor/mcp.json` |
 | Claude Code | `~/.claude.json` (global) + `.mcp.json` (project) |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Kimi Code / Kimi CLI | `~/.kimi/mcp.json` |
 
 It is **idempotent** — run it again any time, it merges without touching existing entries (no `jq` needed, falls back to `node`).
 
 Then **restart your client** to load the server.
 
-## Manual registration (any MCP client)
+## Copy-paste install (per client)
 
-Add to your client's MCP config:
+Prefer adding the config by hand? Copy the block below into your client's config file — replace `/absolute/path/to/llm-orchestrator-mcp` with the real path (e.g. `~/.llm-orchestrator-mcp` if you used the one-liner).
+
+### Opencode — `~/.config/opencode/opencode.json`
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "llm-orchestrator": {
+      "type": "local",
+      "command": ["node", "/absolute/path/to/llm-orchestrator-mcp/server.js"],
+      "enabled": true
+    }
+  }
+}
+```
+
+### Cursor — `~/.cursor/mcp.json`
 
 ```json
 {
@@ -65,7 +89,59 @@ Add to your client's MCP config:
 }
 ```
 
-> Opencode uses `"type": "local", "command": ["node", "..."]`; Claude Code uses `"type": "stdio"`.
+### Claude Code — `~/.claude.json` (or project `.mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "llm-orchestrator": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/absolute/path/to/llm-orchestrator-mcp/server.js"]
+    }
+  }
+}
+```
+
+Or simply:
+
+```bash
+claude mcp add llm-orchestrator -- node /absolute/path/to/llm-orchestrator-mcp/server.js
+```
+
+### Windsurf — `~/.codeium/windsurf/mcp_config.json`
+
+```json
+{
+  "mcpServers": {
+    "llm-orchestrator": {
+      "command": "node",
+      "args": ["/absolute/path/to/llm-orchestrator-mcp/server.js"]
+    }
+  }
+}
+```
+
+### Kimi Code / Kimi CLI — `~/.kimi/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "llm-orchestrator": {
+      "command": "node",
+      "args": ["/absolute/path/to/llm-orchestrator-mcp/server.js"]
+    }
+  }
+}
+```
+
+Or via the CLI (well-known MCP config format also supported):
+
+```bash
+kimi mcp add --transport stdio llm-orchestrator -- node /absolute/path/to/llm-orchestrator-mcp/server.js
+```
+
+> If your agent config lives elsewhere, any MCP-stdio entry pointing at `node /path/to/server.js` works — the protocol is standard JSON-RPC over stdio.
 
 ## API keys
 
@@ -158,7 +234,7 @@ Check a client actually sees the server: run `llm_status` in your agent — a mo
 llm-orchestrator-mcp/
 ├── server.js     # MCP server (JSON-RPC over stdio, zero dependencies)
 ├── models.json   # catalog + routing rules + scoring weights
-├── install.sh    # multi-client installer (Opencode, Cursor, Claude Code, Windsurf)
+├── install.sh    # multi-client installer (Opencode, Cursor, Claude Code, Windsurf, Kimi Code)
 ├── package.json
 └── README.md
 ```

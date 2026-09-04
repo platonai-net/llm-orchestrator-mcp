@@ -1,7 +1,7 @@
 {
   "name": "llm-orchestrator-mcp",
   "version": "1.0.0",
-  "description": "Zero-dependency MCP server: health-checks LLMs, elects the best one as orchestrator and delegates tasks by specialty (code, writing, analysis...). Works with Opencode, Cursor, Claude Code, Windsurf.",
+  "description": "Zero-dependency MCP server: health-checks LLMs, elects the best one as orchestrator and delegates tasks by specialty (code, writing, analysis...). Works with Opencode, Cursor, Claude Code, Windsurf, Kimi Code.",
   "keywords": [
     "mcp",
     "mcp-server",
@@ -12,6 +12,7 @@
     "cursor",
     "claude-code",
     "windsurf",
+    "kimi-code",
     "gpt",
     "claude",
     "gemini",

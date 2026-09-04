@@ -5,9 +5,24 @@
 #
 set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_RAW="https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")"
+
+# ---------- Résolution du dossier d'installation ----------
+# - Exécution depuis un clone  -> dossier du script
+# - Exécution via curl | bash  -> ~/.llm-orchestrator-mcp (téléchargement auto)
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/server.js" ]; then
+  DIR="$SCRIPT_DIR"
+else
+  DIR="$HOME/.llm-orchestrator-mcp"
+  mkdir -p "$DIR"
+  for f in server.js models.json; do
+    if [ ! -f "$DIR/$f" ]; then
+      curl -fsSL "$REPO_RAW/$f" -o "$DIR/$f" || { echo "Téléchargement de $f impossible" >&2; exit 1; }
+    fi
+  done
+fi
 SERVER="$DIR/server.js"
-COMMAND="node $SERVER"
 NAME="llm-orchestrator"
 
 log()  { printf '\033[1;32m[install]\033[0m %s\n' "$*"; }
@@ -102,6 +117,10 @@ merge_config() {
 install_opencode() {
   local cfg="${OPENCODE_CONFIG:-$HOME/.config/opencode/opencode.json}"
   mkdir -p "$(dirname "$cfg")"
+  merge_config "$cfg" 'mcp' "$(cat <<EOF
+{ "$NAME": { "type": "local", "command": ["node", "$SERVER"], "enabled": true } }
+EOF
+)"
   merge_config "$cfg" 'mcpServers' "$(cat <<EOF
 { "$NAME": { "type": "local", "command": ["node", "$SERVER"] } }
 EOF
@@ -149,10 +168,22 @@ EOF
   log "Windsurf      -> $cfg"
 }
 
+# ---------- 5) Kimi Code / Kimi CLI (~/.kimi/mcp.json) ----------
+install_kimi() {
+  local cfg="${KIMI_CONFIG:-$HOME/.kimi/mcp.json}"
+  mkdir -p "$(dirname "$cfg")"
+  merge_config "$cfg" 'mcpServers' "$(cat <<EOF
+{ "$NAME": { "command": "node", "args": ["$SERVER"] } }
+EOF
+)"
+  log "Kimi Code     -> $cfg"
+}
+
 install_opencode
 install_cursor
 install_claude
 install_windsurf
+install_kimi
 
 # ---------- Clés API ----------
 cat <<'EOF'
@@ -170,5 +201,5 @@ transmises aux clients lancés depuis le terminal.
 
 EOF
 
-log "Terminé. Redémarre Opencode / Cursor / Claude Code / Windsurf pour charger le serveur."
+log "Terminé. Redémarre Opencode / Cursor / Claude Code / Windsurf / Kimi Code pour charger le serveur."
 log "Ensuite, demande à ton agent : « teste la santé des modèles et choisis le meilleur »."
