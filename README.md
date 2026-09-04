@@ -1,14 +1,15 @@
 # LLM Orchestrator MCP
 
-**Zero-dependency MCP server** (Node ≥ 18, native `fetch`) that turns any MCP-compatible coding agent into a **multi-model orchestrator**.
+**Zero-dependency MCP server** (Node ≥ 18, native `fetch`) that turns any MCP-compatible coding agent into a **multi-model orchestrator** — with **any LLM**, not just the built-in catalog.
 
 After installation, it:
 
-1. **Health-checks** every model in the catalog (GPT-5, Claude 4.5, Gemini 3, Mistral Large 2, Llama 4) — availability + latency.
-2. **Detects the best model** in the list (score = health 40%, latency 30%, context 20%, quality 10% — weights editable in `models.json`).
-3. **Promotes it to orchestrator**: it breaks complex requests into sub-tasks.
-4. **Delegates each task** to the most suitable model by task type: `code`, `writing`, `analysis`, `longcontext`, `multimodal`, `cheap`, `local` (routing rules editable in `models.json`).
-5. **Synthesizes** all sub-task results into a single answer.
+1. **Detects available LLMs automatically** (see *Dynamic detection* below) — OpenAI, Anthropic, Google, Mistral, Groq, **Ollama**, vLLM, LM Studio… any OpenAI-compatible endpoint.
+2. **Health-checks** every detected model — availability + latency.
+3. **Detects the best model** in the list (score = health 40%, latency 30%, context 20%, quality 10% — weights editable in `models.json`).
+4. **Promotes it to orchestrator**: it breaks complex requests into sub-tasks.
+5. **Delegates each task** to the most suitable model by task type (`code`, `writing`, `analysis`, `longcontext`, `multimodal`, `cheap`, `local`) and **specialist role** (`orchestrator`, `github-manager`, `auditor`, `business-analyst`…).
+6. **Synthesizes** all sub-task results into a single answer.
 
 Works with **Opencode, Cursor, Claude Code, Windsurf, Kimi Code** — and any MCP stdio client.
 
@@ -157,13 +158,51 @@ export GROQ_API_KEY=...        # Llama 4 (served via Groq)
 
 Models without a key (or failing with 401/429/404/network errors) are **automatically excluded** — the orchestrator is elected among **healthy models only**.
 
+## Dynamic detection (any LLM)
+
+The server **discovers available LLMs itself** at runtime — no hard-coded list. Four sources, combined:
+
+| Source | How it works |
+|---|---|
+| **API keys in env** | Any provider key present (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `OLLAMA_API_KEY`…) activates its provider |
+| **`/models` listing** | Queries each provider's model-list endpoint and auto-registers usable models (embeddings/image models filtered out) |
+| **`LLM_ORCH_MODELS` env** | `export LLM_ORCH_MODELS="ollama:qwen2.5-coder:7b,openai:gpt-4.1-mini,anthropic:claude-3-5-haiku"` |
+| **`models.local.json`** | Git-ignored file next to `server.js` (or `LLM_ORCH_LOCAL_MODELS=path`) for full control |
+
+`models.local.json` example — **any provider, any OpenAI-compatible endpoint**:
+
+```json
+[
+  { "id": "qwen-coder", "provider": "ollama", "baseUrl": "http://localhost:11434/v1", "model": "qwen2.5-coder:7b" },
+  { "id": "vllm-70b", "provider": "vllm", "baseUrl": "http://my-server:8000/v1", "model": "qwen-72b", "apiKeyEnv": "VLLM_API_KEY" },
+  { "id": "lmstudio", "provider": "lmstudio", "baseUrl": "http://localhost:1234/v1", "model": "mistral-small" }
+]
+```
+
+Local servers (**Ollama, vLLM, LM Studio, llama.cpp**) work **without any API key**. Discovery is capped (`discovery.maxPerProvider` / `maxTotal` in `models.json`) to keep probing fast.
+
+## Specialist roles (mini-prompts)
+
+Tasks can run under a **role** — a compact specialist system-prompt. Built-in roles (editable in `models.json`):
+
+| Role | Specialty |
+|---|---|
+| `orchestrator` | Decompose, sequence, delegate, merge |
+| `github-manager` | Repos, branches, commits, PRs, issues, releases (via `gh`/git CLI) |
+| `auditor` | Code/security/compliance review, severity-rated findings |
+| `business-analyst` | Requirements, user stories, KPIs, process maps, risks |
+
+Add your own in `models.json` under `"roles"` — the orchestrator auto-assigns roles per sub-task, or force one:
+
+> "delegate to the auditor role: review this repo"
+
 ## MCP tools
 
 | Tool | Purpose |
 |---|---|
-| `llm_status` | Probe all models, compute scores, elect the best one as orchestrator |
-| `llm_delegate` | Delegate one task to the best model for its type (auto-detected) |
-| `llm_orchestrate` | Split a request into sub-tasks, route each one, synthesize |
+| `llm_status` | Detect available LLMs, probe all models, compute scores, elect the best one as orchestrator |
+| `llm_delegate` | Delegate one task to the best model for its type (auto-detected), optionally with a specialist `role` |
+| `llm_orchestrate` | Split a request into sub-tasks, assign roles, route each one, synthesize |
 
 ### `llm_delegate` arguments
 
@@ -171,7 +210,8 @@ Models without a key (or failing with 401/429/404/network errors) are **automati
 |---|---|---|
 | `task` | string (required) | The task to run |
 | `taskType` | enum | `code`, `writing`, `analysis`, `longcontext`, `multimodal`, `cheap`, `local` (auto-detected if omitted) |
-| `model` | enum | Force a specific model (`gpt-5`, `claude-4.5`, ...) |
+| `model` | string | Force a specific model (any detected id, e.g. `gpt-5`, `ollama:qwen2.5-coder:7b`) |
+| `role` | enum | Specialist mini-prompt: `orchestrator`, `github-manager`, `auditor`, `business-analyst`, … |
 | `maxTokens` | integer | Max answer size (default 2048) |
 
 ### `llm_orchestrate` arguments
@@ -180,6 +220,7 @@ Models without a key (or failing with 401/429/404/network errors) are **automati
 |---|---|---|
 | `request` | string (required) | The full user request |
 | `maxSubtasks` | integer | Max sub-tasks (default 5) |
+| `roles` | boolean | Enable specialist-role assignment (default true) |
 
 ## Usage in your agent
 
@@ -214,10 +255,12 @@ Everything lives in `models.json`:
 
 - `selection.weights` — scoring weights (health / latency / context / quality)
 - `routing.<type>.preferred` — model preference order per task type, `minScore` floor
+- `roles.<id>.prompt` — specialist mini-prompts (orchestrator, github-manager, auditor, business-analyst, + your own)
+- `discovery` — `enabled`, `maxPerProvider`, `maxTotal` for automatic model detection
 - `probeTimeoutMs`, `probeMaxTokens`, `probePrompt` — health probe tuning
 - `orchestratorSystemPrompt` — the orchestrator's system instruction
 
-Per-model env overrides: `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `MISTRAL_MODEL`, `GROQ_MODEL`, and `*_BASE_URL` for each provider.
+Per-model env overrides: `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `MISTRAL_MODEL`, `GROQ_MODEL`, `OLLAMA_BASE_URL`, and `*_BASE_URL` for each provider.
 
 ## Troubleshooting
 
@@ -232,9 +275,10 @@ Check a client actually sees the server: run `llm_status` in your agent — a mo
 
 ```
 llm-orchestrator-mcp/
-├── server.js     # MCP server (JSON-RPC over stdio, zero dependencies)
-├── models.json   # catalog + routing rules + scoring weights
-├── install.sh    # multi-client installer (Opencode, Cursor, Claude Code, Windsurf, Kimi Code)
+├── server.js        # MCP server (JSON-RPC over stdio, zero dependencies)
+├── models.json      # catalog + routing rules + roles + scoring weights
+├── models.local.json  # (optional, git-ignored) your own models/providers
+├── install.sh       # multi-client installer (Opencode, Cursor, Claude Code, Windsurf, Kimi Code)
 ├── package.json
 └── README.md
 ```

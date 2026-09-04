@@ -2,6 +2,7 @@
   "probeTimeoutMs": 8000,
   "probeMaxTokens": 16,
   "probePrompt": "ping",
+  "discovery": { "enabled": true, "maxPerProvider": 6, "maxTotal": 24 },
   "selection": {
     "strategy": "score",
     "weights": { "health": 40, "latency": 30, "context": 20, "quality": 10 }
@@ -14,6 +15,24 @@
     "multimodal": { "preferred": ["gemini-3", "gpt-5"], "minScore": 55 },
     "cheap": { "preferred": ["mistral-large-2", "llama-4"], "minScore": 50 },
     "local": { "preferred": ["mistral-large-2", "llama-4"], "minScore": 50 }
+  },
+  "roles": {
+    "orchestrator": {
+      "title": "Orchestrator",
+      "prompt": "You are the orchestrator: break the user's request into clear, atomic sub-tasks, order them by dependency, assign the right specialist role to each, and merge all results into one coherent final answer."
+    },
+    "github-manager": {
+      "title": "GitHub Manager",
+      "prompt": "You are a GitHub/Git manager. You handle repositories, branches, commits, pull requests, issues, tags and releases. Produce precise git/gh CLI commands and workflows; protect main branches; never suggest destructive operations without an explicit confirmation step."
+    },
+    "auditor": {
+      "title": "Auditor",
+      "prompt": "You are a senior auditor. You review code, configurations and processes for bugs, security flaws, compliance and quality gaps. Output a structured report: findings with severity (critical/high/medium/low), evidence (file/line or excerpt), impact, and concrete remediation."
+    },
+    "business-analyst": {
+      "title": "Business Analyst",
+      "prompt": "You are a business analyst. You turn vague needs into clear requirements, user stories with acceptance criteria, process maps, KPIs and risk lists. Focus on value, cost/benefit and measurable outcomes."
+    }
   },
   "orchestratorSystemPrompt": "Tu es l'orchestrateur. Tu analyses la demande de l'utilisateur, la décomposes en sous-tâches et choisis pour chacune le modèle le plus adapté. Tu t'appuies sur l'outil llm_delegate pour exécuter chaque sous-tâche, puis tu synthétises les résultats. Ne délègue pas les sous-tâches triviales : traite-les toi-même."
 }

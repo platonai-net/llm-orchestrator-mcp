@@ -32,7 +32,7 @@ for (const p of CONFIG_PATHS) {
   }
 }
 
-const PROVIDERS = {
+const CATALOG = {
   "gpt-5": {
     label: "GPT-5 (OpenAI)",
     provider: "openai",
@@ -86,6 +86,175 @@ const PROVIDERS = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Découverte dynamique des modèles                                   */
+/*  Sources : clés API dans l'env, listing /models, models.local.json, */
+/*  variables *_MODEL / LLM_ORCH_MODELS. N'importe quel LLM marche.    */
+/* ------------------------------------------------------------------ */
+
+const LOCAL_JSON_PATHS = [
+  process.env.LLM_ORCH_LOCAL_MODELS && path.resolve(process.env.LLM_ORCH_LOCAL_MODELS),
+  path.join(__dirname, "models.local.json"),
+].filter(Boolean);
+
+function loadLocalModels() {
+  for (const p of LOCAL_JSON_PATHS) {
+    try {
+      const arr = JSON.parse(fs.readFileSync(p, "utf8"));
+      if (Array.isArray(arr)) return arr;
+    } catch { /* ignore */ }
+  }
+  return [];
+}
+
+// Heuristiques de classification d'un modèle découvert
+function guessQuality(modelId) {
+  const id = modelId.toLowerCase();
+  if (/gpt-5|opus|gemini-3|claude-4|sonnet-4/.test(id)) return 10;
+  if (/gpt-4|large|sonnet|pro|70b|405b|maverick/.test(id)) return 8;
+  if (/mini|small|8b|flash|haiku|turbo/.test(id)) return 6;
+  return 7;
+}
+function guessStrengths(modelId) {
+  const id = modelId.toLowerCase();
+  const s = new Set(["analysis"]);
+  if (/code|coder|dev|stella/.test(id) || /qwen|deepseek/.test(id)) s.add("code");
+  if (/large|gpt|claude|sonnet|opus/.test(id)) { s.add("writing"); s.add("code"); }
+  if (/mini|small|8b|nano|flash|haiku|turbo/.test(id)) { s.add("cheap"); s.add("local"); }
+  if (/vision|image|video|audio|omni|multimodal/.test(id)) s.add("multimodal");
+  if (/1m|2m|4m|1m\b|long/.test(id)) s.add("longcontext");
+  return [...s];
+}
+function guessContext(modelId) {
+  const id = modelId.toLowerCase();
+  if (/1m|2m|4m/.test(id)) return 1000000;
+  return 128000;
+}
+
+// Endpoints de listing de modèles par style d'API
+async function listProviderModels(cfg) {
+  const apiKey = process.env[cfg.apiKeyEnv];
+  if (!apiKey) return [];
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), Math.min(config.probeTimeoutMs, 6000));
+  try {
+    let url, headers;
+    if (cfg.provider === "anthropic") {
+      url = `${cfg.baseUrl}/models`;
+      headers = { "x-api-key": apiKey, "anthropic-version": "2023-06-01" };
+    } else if (cfg.provider === "google") {
+      url = `${cfg.baseUrl}/models`;
+      headers = { "x-goog-api-key": apiKey };
+    } else {
+      url = `${cfg.baseUrl}/models`;
+      headers = { Authorization: `Bearer ${apiKey}` };
+    }
+    const res = await fetch(url, { headers, signal: ctrl.signal });
+    if (!res.ok) return [];
+    const json = await res.json();
+    let ids = [];
+    if (Array.isArray(json.data)) ids = json.data.map((m) => m.id || m.name);
+    else if (Array.isArray(json.models)) ids = json.models.map((m) => m.name || m.id || m.model);
+    else if (Array.isArray(json)) ids = json.map((m) => m.id || m.name);
+    ids = ids.filter(Boolean).filter((id) => !/(embed|whisper|tts|dall|moderation|babbage|davinci|image-gen|aqa)/i.test(id));
+    if (cfg.provider === "google") ids = ids.map((n) => String(n).replace(/^models\//, "")).filter((n) => /gemini/.test(n));
+    return ids;
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Construit PROVIDERS : catalogue de base + découvertes (env, listing API, local)
+function buildProviders() {
+  const providers = { ...CATALOG };
+
+  // 1) Modèles personnalisés via variables d'environnement
+  //    LLM_ORCH_MODELS="openai:gpt-4.1-mini,anthropic:claude-3-5-haiku,ollama:qwen2.5-coder:7b"
+  if (process.env.LLM_ORCH_MODELS) {
+    for (const raw of process.env.LLM_ORCH_MODELS.split(",")) {
+      const spec = raw.trim();
+      if (!spec) continue;
+      const [prov, ...rest] = spec.split(":");
+      const modelId = rest.join(":") || prov;
+      const provider = rest.length ? prov.toLowerCase() : "openai";
+      const id = `${provider}:${modelId}`.toLowerCase();
+      if (providers[id]) continue;
+      providers[id] = {
+        label: `${modelId} (${provider})`,
+        provider,
+        baseUrl: process.env.LLM_ORCH_BASE_URL || "https://api.openai.com/v1",
+        apiKeyEnv: provider.toUpperCase() === "OLLAMA" ? "OLLAMA_API_KEY" : "OPENAI_API_KEY",
+        model: modelId,
+        contextTokens: guessContext(modelId),
+        quality: guessQuality(modelId),
+        strengths: guessStrengths(modelId),
+        discovered: "env",
+      };
+      if (provider === "ollama") {
+        providers[id].baseUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434/v1";
+        providers[id].apiKeyEnv = "OLLAMA_API_KEY";
+      }
+    }
+  }
+
+  // 2) models.local.json : n'importe quel fournisseur, sans modifier le dépôt
+  //    [{ "id":"qwen-coder", "provider":"ollama", "baseUrl":"http://localhost:11434/v1", "model":"qwen2.5-coder:7b", "apiKeyEnv":"...", "contextTokens":32768 }]
+  for (const m of loadLocalModels()) {
+    if (!m || !m.model || !m.provider) continue;
+    const id = (m.id || `${m.provider}:${m.model}`).toLowerCase();
+    if (providers[id]) continue;
+    providers[id] = {
+      label: m.label || `${m.model} (${m.provider})`,
+      provider: m.provider,
+      baseUrl: m.baseUrl || "https://api.openai.com/v1",
+      apiKeyEnv: m.apiKeyEnv || "OPENAI_API_KEY",
+      model: m.model,
+      contextTokens: m.contextTokens || guessContext(m.model),
+      quality: m.quality || guessQuality(m.model),
+      strengths: m.strengths || guessStrengths(m.model),
+      discovered: "local",
+    };
+  }
+
+  // 3) Listing dynamique /models — géré de façon asynchrone par buildProvidersAsync()
+  return providers;
+}
+
+async function buildProvidersAsync() {
+  const providers = buildProviders(); // env + local d'abord (synchrone)
+  const disc = { enabled: true, maxPerProvider: 6, maxTotal: 24, ...(config.discovery || {}) };
+  if (!disc.enabled) return providers;
+  const seen = new Set(Object.values(providers).map((p) => p.model));
+  let total = Object.keys(providers).length;
+  const jobs = Object.keys(CATALOG).map(async (key) => {
+    const cfg = CATALOG[key];
+    const ids = await listProviderModels(cfg);
+    let added = 0;
+    for (const id of ids) {
+      if (added >= disc.maxPerProvider || total >= disc.maxTotal) break;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const pid = `${cfg.provider}:${id}`.toLowerCase();
+      providers[pid] = {
+        label: `${id} (${cfg.provider})`,
+        provider: cfg.provider,
+        baseUrl: cfg.baseUrl,
+        apiKeyEnv: cfg.apiKeyEnv,
+        model: id,
+        contextTokens: guessContext(id),
+        quality: guessQuality(id),
+        strengths: guessStrengths(id),
+        discovered: "api",
+      };
+      added++; total++;
+    }
+  });
+  await Promise.all(jobs);
+  return providers;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Client HTTP minimal (fetch natif, Node >= 18)                      */
 /* ------------------------------------------------------------------ */
 
@@ -107,7 +276,8 @@ function classifyProviderError(status, body) {
 
 async function chatOnce(cfg, { system, user, maxTokens }) {
   const apiKey = process.env[cfg.apiKeyEnv];
-  if (!apiKey) {
+  const isOpenAIStyle = !["anthropic", "google"].includes(cfg.provider);
+  if (!apiKey && !(isOpenAIStyle && (cfg.provider === "ollama" || /localhost|127\.0\.0\.1/.test(cfg.baseUrl || "")))) {
     return { ok: false, status: 0, error: { kind: "no-key", detail: `${cfg.apiKeyEnv} non définie` } };
   }
   const ctrl = new AbortController();
@@ -128,7 +298,8 @@ async function chatOnce(cfg, { system, user, maxTokens }) {
       };
     } else {
       url = `${cfg.baseUrl}/chat/completions`;
-      headers = { Authorization: `Bearer ${apiKey}`, "content-type": "application/json" };
+      headers = { "content-type": "application/json" };
+      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
       body = { model: cfg.model, max_tokens: maxTokens, messages: system ? [{ role: "system", content: system }, { role: "user", content: user }] : [{ role: "user", content: user }] };
     }
     const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: ctrl.signal });
@@ -171,6 +342,8 @@ function scoreModel(entry, latencyMs, weights) {
 
 const state = {
   probed: false,
+  providers: {},     // catalogue dynamique (détection des LLM disponibles)
+  discoveredFrom: [],// sources de détection utilisées
   scores: {},        // id -> score
   latency: {},       // id -> ms
   status: {},        // id -> { ok, kind, detail }
@@ -179,6 +352,16 @@ const state = {
 
 async function probeAll(force = false) {
   if (state.probed && !force) return state;
+  if (force || !Object.keys(state.providers).length) {
+    state.providers = await buildProvidersAsync();
+    state.discoveredFrom = [
+      process.env.LLM_ORCH_MODELS ? "env(LLM_ORCH_MODELS)" : null,
+      loadLocalModels().length ? "models.local.json" : null,
+      "api-listing",
+      "catalog",
+    ].filter(Boolean);
+  }
+  const PROVIDERS = state.providers;
   const ids = Object.keys(PROVIDERS);
   await Promise.all(
     ids.map(async (id) => {
@@ -204,6 +387,7 @@ async function probeAll(force = false) {
 }
 
 function pickForTask(taskType) {
+  const PROVIDERS = state.providers;
   const rule = config.routing[taskType] || null;
   const healthy = Object.keys(PROVIDERS).filter((id) => state.status[id] && state.status[id].ok);
   if (!healthy.length) return null;
@@ -232,42 +416,47 @@ function inferTaskType(text) {
 
 const PROTOCOL_VERSION = "2024-11-05";
 
-const TOOLS = [
-  {
-    name: "llm_status",
-    description:
-      "Teste la santé de tous les modèles (GPT-5, Claude 4.5, Gemini 3, Mistral Large 2, Llama 4), calcule leurs scores (santé, latence, contexte, qualité) et désigne le meilleur modèle comme orchestrateur.",
-    inputSchema: { type: "object", properties: { force: { type: "boolean", description: "Relancer les tests même si déjà fait" } } },
-  },
-  {
-    name: "llm_delegate",
-    description:
-      "Délègue une tâche au modèle le plus adapté (ou au modèle choisi). Le meilleur modèle disponible est utilisé par défaut, affiné par type de tâche (code, writing, analysis, longcontext, multimodal, cheap, local).",
-    inputSchema: {
-      type: "object",
-      required: ["task"],
-      properties: {
-        task: { type: "string", description: "La tâche à exécuter" },
-        taskType: { type: "string", enum: Object.keys(config.routing), description: "Type de tâche (détecté automatiquement si omis)" },
-        model: { type: "string", enum: Object.keys(PROVIDERS), description: "Forcer un modèle précis" },
-        maxTokens: { type: "integer", description: "Taille max de la réponse (défaut 2048)" },
+function toolSchema() {
+  const known = Object.keys(state.providers);
+  return [
+    {
+      name: "llm_status",
+      description:
+        `Détecte automatiquement les LLM disponibles (${known.length} modèles enregistrés actuellement : clés API de l'environnement, listing /models de chaque fournisseur, LLM_ORCH_MODELS, models.local.json — y compris Ollama et tout endpoint OpenAI-compatible), teste leur santé, calcule leurs scores et élit le meilleur comme orchestrateur.`,
+      inputSchema: { type: "object", properties: { force: { type: "boolean", description: "Relancer la détection + les tests même si déjà fait" } } },
+    },
+    {
+      name: "llm_delegate",
+      description:
+        "Délègue une tâche au modèle le plus adapté (ou au modèle/au rôle choisi). Le meilleur modèle disponible est utilisé par défaut, affiné par type de tâche (code, writing, analysis, longcontext, multimodal, cheap, local).",
+      inputSchema: {
+        type: "object",
+        required: ["task"],
+        properties: {
+          task: { type: "string", description: "La tâche à exécuter" },
+          taskType: { type: "string", enum: Object.keys(config.routing), description: "Type de tâche (détecté automatiquement si omis)" },
+          model: { type: "string", description: `Forcer un modèle précis (id exact, ex: ${known.slice(0, 3).join(", ") || "gpt-5"}...)` },
+          role: { type: "string", enum: Object.keys(config.roles || {}), description: "Mini-prompt de spécialiste appliqué à la tâche (orchestrator, github-manager, auditor, business-analyst...)" },
+          maxTokens: { type: "integer", description: "Taille max de la réponse (défaut 2048)" },
+        },
       },
     },
-  },
-  {
-    name: "llm_orchestrate",
-    description:
-      "Mode orchestrateur : décompose une demande en sous-tâches et exécute chaque sous-tâche sur le modèle le plus adapté, puis synthétise. Utiliser pour les demandes complexes.",
-    inputSchema: {
-      type: "object",
-      required: ["request"],
-      properties: {
-        request: { type: "string", description: "La demande complète de l'utilisateur" },
-        maxSubtasks: { type: "integer", description: "Nombre max de sous-tâches (défaut 5)" },
+    {
+      name: "llm_orchestrate",
+      description:
+        "Mode orchestrateur : décompose une demande en sous-tâches, assigne un rôle de spécialiste à chacune (orchestrator, github-manager, auditor, business-analyst...), exécute chaque sous-tâche sur le modèle le plus adapté, puis synthétise.",
+      inputSchema: {
+        type: "object",
+        required: ["request"],
+        properties: {
+          request: { type: "string", description: "La demande complète de l'utilisateur" },
+          maxSubtasks: { type: "integer", description: "Nombre max de sous-tâches (défaut 5)" },
+          roles: { type: "boolean", description: "Activer l'assignation de rôles spécialistes (défaut true)" },
+        },
       },
     },
-  },
-];
+  ];
+}
 
 function toolResult(id, payload, isError = false) {
   return {
@@ -280,10 +469,13 @@ function toolResult(id, payload, isError = false) {
 async function handleToolCall(name, args) {
   if (name === "llm_status") {
     await probeAll(Boolean(args && args.force));
+    const PROVIDERS = state.providers;
     return {
+      detectedFrom: state.discoveredFrom,
       orchestrator: state.orchestrator ? { id: state.orchestrator, ...describe(state.orchestrator), score: state.scores[state.orchestrator], latencyMs: state.latency[state.orchestrator] } : null,
       models: Object.keys(PROVIDERS).map((id) => ({
         id, label: PROVIDERS[id].label, ok: state.status[id].ok,
+        discovered: PROVIDERS[id].discovered || "catalog",
         errorKind: state.status[id].kind || null,
         score: state.scores[id], latencyMs: state.latency[id],
       })),
@@ -291,6 +483,7 @@ async function handleToolCall(name, args) {
   }
 
   await probeAll(false);
+  const PROVIDERS = state.providers;
 
   if (name === "llm_delegate") {
     const task = args.task;
@@ -304,9 +497,11 @@ async function handleToolCall(name, args) {
     }
     if (!target) return { error: "Aucun modèle sain disponible. Vérifie les clés API." };
     const cfg = PROVIDERS[target];
-    const r = await chatOnce(cfg, { system: null, user: task, maxTokens: args.maxTokens || 2048 });
+    const role = args.role && (config.roles || {})[args.role] ? config.roles[args.role] : null;
+    const system = role ? role.prompt : null;
+    const r = await chatOnce(cfg, { system, user: task, maxTokens: args.maxTokens || 2048 });
     if (!r.ok) return { error: `${cfg.label} indisponible (${r.error.kind})`, detail: r.error.detail };
-    return { delegatedTo: target, label: cfg.label, taskType: taskType || args.taskType || "custom", answer: r.text };
+    return { delegatedTo: target, label: cfg.label, taskType: taskType || args.taskType || "custom", role: role ? role.title : null, answer: r.text };
   }
 
   if (name === "llm_orchestrate") {
@@ -314,12 +509,18 @@ async function handleToolCall(name, args) {
     if (!request) return { error: "Paramètre 'request' requis" };
     if (!state.orchestrator) return { error: "Aucun modèle sain disponible pour orchestrer." };
     const maxSubtasks = Math.max(1, Math.min(10, args.maxSubtasks || 5));
+    const useRoles = args.roles !== false && Object.keys(config.roles || {}).length > 0;
+    const rolesList = Object.keys(config.roles || {}).map((r) => `${r} (${config.roles[r].title})`).join(", ");
     const orchCfg = PROVIDERS[state.orchestrator];
     const planPrompt =
       `Demande de l'utilisateur :\n"""${request}"""\n\n` +
       `Modèles disponibles (id | forces) :\n${Object.keys(PROVIDERS).map((id) => `- ${id} | ${PROVIDERS[id].strengths.join(", ")}`).join("\n")}\n\n` +
+      (useRoles ? `Rôles disponibles : ${rolesList}\n` : "") +
       `Décompose cette demande en au maximum ${maxSubtasks} sous-tâches concrètes. ` +
-      `Réponds UNIQUEMENT en JSON valide :\n{"subtasks":[{"id":1,"description":"...","taskType":"code|writing|analysis|longcontext|multimodal|cheap|local"}]}`;
+      (useRoles
+        ? `Assigne à chaque sous-tâche le rôle de spécialiste le plus pertinent. `
+        : "") +
+      `Réponds UNIQUEMENT en JSON valide :\n{"subtasks":[{"id":1,"description":"...",${useRoles ? '"role":"<role-id>",' : ""}"taskType":"code|writing|analysis|longcontext|multimodal|cheap|local"}]}`;
     const plan = await chatOnce(orchCfg, { system: config.orchestratorSystemPrompt, user: planPrompt, maxTokens: 1500 });
     if (!plan.ok) return { error: `Orchestrateur (${orchCfg.label}) indisponible : ${plan.error.kind}` };
     let parsed;
@@ -335,9 +536,11 @@ async function handleToolCall(name, args) {
       const taskType = st.taskType && config.routing[st.taskType] ? st.taskType : inferTaskType(st.description);
       const target = pickForTask(taskType) || state.orchestrator;
       const cfg = PROVIDERS[target];
-      const r = await chatOnce(cfg, { system: null, user: st.description, maxTokens: 2048 });
+      const role = useRoles && st.role && (config.roles || {})[st.role] ? config.roles[st.role] : null;
+      const r = await chatOnce(cfg, { system: role ? role.prompt : null, user: st.description, maxTokens: 2048 });
       results.push({
         subtask: st.description,
+        role: role ? role.title : null,
         taskType,
         delegatedTo: target,
         label: cfg.label,
@@ -351,7 +554,7 @@ async function handleToolCall(name, args) {
       orchestratorLabel: orchCfg.label,
       plan: subtasks,
       results,
-      synthesis: results.map((r, i) => `## ${i + 1}. ${r.subtask}\n[${r.label}${r.ok ? "" : " — ÉCHEC : " + r.errorKind}]\n${r.answer || ""}`).join("\n\n"),
+      synthesis: results.map((r, i) => `## ${i + 1}. ${r.subtask}\n[${r.label}${r.role ? " · rôle " + r.role : ""}${r.ok ? "" : " — ÉCHEC : " + r.errorKind}]\n${r.answer || ""}`).join("\n\n"),
     };
   }
 
@@ -359,7 +562,8 @@ async function handleToolCall(name, args) {
 }
 
 function describe(id) {
-  const p = PROVIDERS[id];
+  const p = state.providers[id];
+  if (!p) return { id };
   return { label: p.label, provider: p.provider, model: p.model, contextTokens: p.contextTokens, strengths: p.strengths };
 }
 
@@ -443,7 +647,7 @@ async function handleMessage(line) {
   if (method === "notifications/initialized") return; // pas de réponse
   if (method === "ping") { send({ jsonrpc: "2.0", id, result: {} }); return; }
   if (method === "tools/list") {
-    send({ jsonrpc: "2.0", id, result: { tools: TOOLS } });
+    send({ jsonrpc: "2.0", id, result: { tools: toolSchema() } });
     return;
   }
   if (method === "tools/call") {
