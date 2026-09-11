@@ -23,6 +23,7 @@
   "bin": { "llm-orchestrator-mcp": "./server.js" },
   "scripts": {
     "start": "node server.js",
+    "test": "node --test",
     "install": "bash install.sh"
   },
   "engines": { "node": ">=18" },

@@ -32,6 +32,34 @@ for (const p of CONFIG_PATHS) {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Backend mode : local | hosted | both (KYBERNOS_MCP_BACKEND)        */
+/*  local = stdio-only (inchangé). hosted/both = outils du proxy       */
+/*  Kybernos fusionnés + transférés via hosted.js.                     */
+/* ------------------------------------------------------------------ */
+
+const hosted = require("./hosted");
+const memory = require("./memory");
+
+const BACKEND_ENV = "KYBERNOS_MCP_BACKEND";
+let backendWarned = false;
+function getBackendMode() {
+  const raw = String(process.env[BACKEND_ENV] || "local").trim().toLowerCase();
+  if (raw === "local" || raw === "hosted" || raw === "both") return raw;
+  if (!backendWarned) {
+    backendWarned = true;
+    process.stderr.write(`[llm-orchestrator] invalid ${BACKEND_ENV} value — falling back to "local"\n`);
+  }
+  return "local";
+}
+function hostedEnabled() {
+  const m = getBackendMode();
+  return m === "hosted" || m === "both";
+}
+
+// Ruflo-lite local memory (git-ignored, namespaced per cwd) — lazy IO, never crashes
+const memoryStore = memory.createMemoryStore();
+
 const CATALOG = {
   "gpt-5": {
     label: "GPT-5 (OpenAI)",
@@ -392,11 +420,17 @@ function pickForTask(taskType) {
   const healthy = Object.keys(PROVIDERS).filter((id) => state.status[id] && state.status[id].ok);
   if (!healthy.length) return null;
   const ranked = healthy.slice().sort((a, b) => state.scores[b] - state.scores[a]);
+  // Local-memory bias (EWMA stats): refines ranking among HEALTHY models only —
+  // explicit routing rules and health checks always win over memory.
+  const biased = memory.applyMemoryBias(
+    ranked.map((id) => ({ id, score: state.scores[id] })),
+    memoryStore.modelBias(taskType)
+  );
   if (rule) {
     const preferredHealthy = rule.preferred.filter((id) => healthy.includes(id) && state.scores[id] >= (rule.minScore ?? 0));
     if (preferredHealthy.length) return preferredHealthy[0];
   }
-  return ranked[0] || state.orchestrator;
+  return biased.length ? biased[0].id : state.orchestrator;
 }
 
 function inferTaskType(text) {
@@ -416,7 +450,7 @@ function inferTaskType(text) {
 
 const PROTOCOL_VERSION = "2024-11-05";
 
-function toolSchema() {
+function localToolSchemas() {
   const known = Object.keys(state.providers);
   return [
     {
@@ -458,6 +492,55 @@ function toolSchema() {
   ];
 }
 
+function memoryToolSchemas() {
+  return [
+    {
+      name: "llm_feedback",
+      description:
+        "Records the outcome of a (delegated) task into local memory: appends a trajectory, updates the EWMA success score per (taskType, model) used to bias future model election (never overrides health checks), and optionally upserts a distilled lesson (max 500 chars).",
+      inputSchema: {
+        type: "object",
+        required: ["outcome"],
+        properties: {
+          outcome: { type: "string", enum: ["success", "failure"], description: "Task outcome" },
+          taskType: { type: "string", description: "Task type (code, writing, analysis...)" },
+          model: { type: "string", description: "Model id the task ran on" },
+          task: { type: "string", description: "Short prompt summary of the task" },
+          lesson: {
+            description: "Optional distilled lesson — either a plain string or { text, tags: string[] } (max 500 chars)",
+          },
+        },
+      },
+    },
+    {
+      name: "llm_recall",
+      description:
+        "Keyword-scored retrieval (pure JS, no embeddings) over local memory: past trajectories and/or distilled lessons, top-k. Use it to ground decisions on what worked before.",
+      inputSchema: {
+        type: "object",
+        required: ["query"],
+        properties: {
+          query: { type: "string", description: "Keywords to search for" },
+          k: { type: "integer", description: "Max results per kind (default 5)" },
+          kind: { type: "string", enum: ["all", "trajectories", "lessons"], description: "What to search (default all)" },
+        },
+      },
+    },
+  ];
+}
+
+function toolSchema() {
+  const mode = getBackendMode();
+  const tools = [];
+  if (mode !== "hosted") tools.push(...localToolSchemas()); // local LLM delegation (hidden in hosted-only mode)
+  tools.push(...memoryToolSchemas());
+  if (hostedEnabled()) {
+    tools.push(...hosted.hostedToolSchemas());
+    tools.push(hosted.kyberRunToolSchema());
+  }
+  return tools;
+}
+
 function toolResult(id, payload, isError = false) {
   return {
     jsonrpc: "2.0",
@@ -466,11 +549,30 @@ function toolResult(id, payload, isError = false) {
   };
 }
 
+/* Hosted backend health + frozen-contract check (uses the 60s TTL list cache) */
+async function hostedStatus() {
+  try {
+    const r = await hosted.getDefaultClient().listHostedTools();
+    if (!r.ok) return { ok: false, error: r.message };
+    return {
+      ok: true,
+      baseUrl: hosted.getDefaultClient().getBaseUrl(),
+      contractVersion: r.contractVersion,
+      contractOk: r.contractOk,
+      unknownTools: r.extras,   // proxy tools outside the frozen contract (named)
+      missingTools: r.missing,  // frozen tools the proxy no longer exposes (named)
+    };
+  } catch {
+    return { ok: false, error: hosted.ERR_UNAVAILABLE };
+  }
+}
+
 async function handleToolCall(name, args) {
   if (name === "llm_status") {
     await probeAll(Boolean(args && args.force));
     const PROVIDERS = state.providers;
     return {
+      backend: { mode: getBackendMode(), hosted: hostedEnabled() ? await hostedStatus() : null },
       detectedFrom: state.discoveredFrom,
       orchestrator: state.orchestrator ? { id: state.orchestrator, ...describe(state.orchestrator), score: state.scores[state.orchestrator], latencyMs: state.latency[state.orchestrator] } : null,
       models: Object.keys(PROVIDERS).map((id) => ({
@@ -480,6 +582,37 @@ async function handleToolCall(name, args) {
         score: state.scores[id], latencyMs: state.latency[id],
       })),
     };
+  }
+
+  /* ---- Hosted backend tools (no local probing on this path) ---- */
+  if (name === hosted.KYBER_RUN_TOOL) {
+    if (!hostedEnabled()) return { error: `Unknown tool: ${name} (hosted-only — set ${BACKEND_ENV}=hosted|both to enable it)` };
+    // Proxy P2 (mutation tools + kyber_run) is not live yet — explicit stub, NEVER forwarded.
+    return { error: "hosted-p2-required", message: "kyber_run lands with proxy P2 — not yet available" };
+  }
+  if (hosted.isHostedToolName(name)) {
+    if (!hostedEnabled()) return { error: `Unknown tool: ${name} (hosted-only — set ${BACKEND_ENV}=hosted|both to enable it)` };
+    const r = await hosted.getDefaultClient().callTool(name, args || {});
+    if (!r.ok) return { error: r.message, code: r.code || "hosted-error" };
+    return r.payload;
+  }
+
+  /* ---- Local memory tools (available in every mode, zero network) ---- */
+  if (name === "llm_feedback") {
+    const outcome = String((args && args.outcome) || "").toLowerCase();
+    if (outcome !== "success" && outcome !== "failure") return { error: "Parameter 'outcome' must be 'success' or 'failure'" };
+    return memoryStore.recordFeedback({
+      outcome,
+      taskType: args.taskType,
+      model: args.model,
+      prompt: args.task,
+      lesson: args.lesson ? (typeof args.lesson === "string" ? { text: args.lesson } : args.lesson) : null,
+    });
+  }
+  if (name === "llm_recall") {
+    if (!args || !args.query) return { error: "Parameter 'query' is required" };
+    const k = Math.max(1, Math.min(20, args.k || 5));
+    return memoryStore.recall(args.query, { k, kind: args.kind || "all" });
   }
 
   await probeAll(false);
@@ -498,10 +631,16 @@ async function handleToolCall(name, args) {
     if (!target) return { error: "Aucun modèle sain disponible. Vérifie les clés API." };
     const cfg = PROVIDERS[target];
     const role = args.role && (config.roles || {})[args.role] ? config.roles[args.role] : null;
-    const system = role ? role.prompt : null;
+    // Top-k keyword lessons from local memory, injected into the prompt (capped)
+    const lessons = memoryStore.relevantLessons(task, 3);
+    let system = role ? role.prompt : null;
+    if (lessons.length) {
+      const block = "Lessons distilled from past runs (apply when relevant):\n- " + lessons.map((l) => l.text).join("\n- ").slice(0, 1500);
+      system = system ? system + "\n\n" + block : block;
+    }
     const r = await chatOnce(cfg, { system, user: task, maxTokens: args.maxTokens || 2048 });
     if (!r.ok) return { error: `${cfg.label} indisponible (${r.error.kind})`, detail: r.error.detail };
-    return { delegatedTo: target, label: cfg.label, taskType: taskType || args.taskType || "custom", role: role ? role.title : null, answer: r.text };
+    return { delegatedTo: target, label: cfg.label, taskType: taskType || args.taskType || "custom", role: role ? role.title : null, lessonsUsed: lessons.length, answer: r.text };
   }
 
   if (name === "llm_orchestrate") {
@@ -573,53 +712,6 @@ function send(obj) {
   process.stdout.write(JSON.stringify(obj) + "\n");
 }
 
-process.stdin.setEncoding("utf8");
-let buffer = "";
-let pending = 0;
-let stdinEnded = false;
-
-function maybeExit() {
-  if (stdinEnded && pending === 0) process.exit(0);
-}
-
-async function handleSafe(line) {
-  pending++;
-  try {
-    await handleMessage(line);
-  } finally {
-    pending--;
-    maybeExit();
-  }
-}
-
-process.stdin.on("data", (chunk) => {
-  buffer += chunk;
-  let idx;
-  while ((idx = buffer.indexOf("\n")) >= 0) {
-    const line = buffer.slice(0, idx).trim();
-    buffer = buffer.slice(idx + 1);
-    if (line) void handleSafe(line);
-  }
-});
-
-process.stdin.on("end", () => {
-  stdinEnded = true;
-  if (buffer.trim()) {
-    const line = buffer.trim();
-    buffer = "";
-    void handleSafe(line);
-  } else {
-    maybeExit();
-  }
-});
-
-process.on("uncaughtException", (e) => {
-  process.stderr.write(`[llm-orchestrator] ${e && e.stack ? e.stack : e}\n`);
-});
-process.on("unhandledRejection", (e) => {
-  process.stderr.write(`[llm-orchestrator] ${e && e.stack ? e.stack : e}\n`);
-});
-
 async function handleMessage(line) {
   let msg;
   try {
@@ -631,6 +723,7 @@ async function handleMessage(line) {
   const { id, method, params } = msg || {};
 
   if (method === "initialize") {
+    const mode = getBackendMode();
     send({
       jsonrpc: "2.0", id,
       result: {
@@ -639,7 +732,12 @@ async function handleMessage(line) {
         serverInfo: { name: "llm-orchestrator", version: "1.0.0" },
         instructions:
           "Orchestrateur multi-modèles. Utilise llm_status pour tester les modèles et désigner le meilleur (orchestrateur). " +
-          "Utilise llm_delegate pour déléguer une tâche au modèle le plus adapté, llm_orchestrate pour décomposer et router une demande complexe.",
+          "Utilise llm_delegate pour déléguer une tâche au modèle le plus adapté, llm_orchestrate pour décomposer et router une demande complexe. " +
+          `Backend mode: ${mode}. ` +
+          (hostedEnabled()
+            ? `Hosted Kybernos tools (frozen contract v${hosted.CONTRACT_VERSION}) are exposed and forwarded to ${hosted.DEFAULT_BASE_URL}; kyber_run is reserved until proxy P2. `
+            : "Hosted Kybernos tools are disabled (set KYBERNOS_MCP_BACKEND=hosted|both to enable). ") +
+          "Local memory: llm_feedback records outcomes/lessons, llm_recall retrieves them by keywords.",
       },
     });
     return;
@@ -664,5 +762,59 @@ async function handleMessage(line) {
 }
 
 if (process.env.LLM_ORCH_DEBUG) {
-  process.stderr.write(`[llm-orchestrator] démarré pid=${process.pid} node=${process.version} config=${os.homedir() ? "ok" : "?"}\n`);
+  process.stderr.write(`[llm-orchestrator] démarré pid=${process.pid} node=${process.version} backend=${getBackendMode()} config=${os.homedir() ? "ok" : "?"}\n`);
 }
+
+/* -------- stdio server loop (only when run as the main module) -------- */
+
+if (require.main === module) {
+  let buffer = "";
+  let pending = 0;
+  let stdinEnded = false;
+
+  function maybeExit() {
+    if (stdinEnded && pending === 0) process.exit(0);
+  }
+
+  async function handleSafe(line) {
+    pending++;
+    try {
+      await handleMessage(line);
+    } finally {
+      pending--;
+      maybeExit();
+    }
+  }
+
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => {
+    buffer += chunk;
+    let idx;
+    while ((idx = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 1);
+      if (line) void handleSafe(line);
+    }
+  });
+
+  process.stdin.on("end", () => {
+    stdinEnded = true;
+    if (buffer.trim()) {
+      const line = buffer.trim();
+      buffer = "";
+      void handleSafe(line);
+    } else {
+      maybeExit();
+    }
+  });
+
+  process.on("uncaughtException", (e) => {
+    process.stderr.write(`[llm-orchestrator] ${e && e.stack ? e.stack : e}\n`);
+  });
+  process.on("unhandledRejection", (e) => {
+    process.stderr.write(`[llm-orchestrator] ${e && e.stack ? e.stack : e}\n`);
+  });
+}
+
+/* Exposed for the zero-dependency test suite (node --test test/) */
+module.exports = { getBackendMode, toolSchema, handleToolCall, handleMessage };

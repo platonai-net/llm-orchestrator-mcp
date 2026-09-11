@@ -48,7 +48,7 @@ The script auto-registers the server into:
 
 | Client | Config file |
 |---|---|
-| Opencode | `~/.config/opencode/opencode.json` |
+| Opencode | `~/.config/opencode/opencode.json` — `opencode.jsonc` also supported (auto-detected) |
 | Cursor | `~/.cursor/mcp.json` |
 | Claude Code | `~/.claude.json` (global) + `.mcp.json` (project) |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` |
@@ -56,7 +56,42 @@ The script auto-registers the server into:
 
 It is **idempotent** — run it again any time, it merges without touching existing entries (no `jq` needed, falls back to `node`).
 
+The installer also asks for your **backend mode** (see below) — non-interactive runs default to `local`.
+
 Then **restart your client** to load the server.
+
+## Backends: local | hosted | both
+
+The server runs against one of three backends, switched by `KYBERNOS_MCP_BACKEND`:
+
+```bash
+export KYBERNOS_MCP_BACKEND=local    # default — your own LLM API keys
+export KYBERNOS_MCP_BACKEND=hosted   # Kybernos proxy tools only (virtual key)
+export KYBERNOS_MCP_BACKEND=both     # local delegation + hosted tools
+```
+
+| | `local` (default) | `hosted` | `both` |
+|---|---|---|---|
+| **Cost** | Your provider API keys (pay per use, local models free) | Kybernos virtual key (`kys-…`) | Both |
+| **Models** | Any LLM you have a key for (OpenAI, Anthropic, Google, Mistral, Groq, Ollama, vLLM…) | Server-side models behind the proxy | All of them |
+| **Kybers / crews** | — | `kyber_list`, `kyber_get` (read-only, frozen contract v1) | Same as hosted |
+| **Memory** | Local Ruflo-lite memory (`llm_feedback` / `llm_recall`, trajectories + EWMA stats + lessons) | Same local memory | Same local memory |
+| **Requirements** | Node ≥ 18 + ≥ 1 provider key | Node ≥ 18 + `KYBERNOS_API_KEY` | Node ≥ 18 + both |
+
+**Start local, upgrade hosted**: begin with zero cost using your existing keys (or a local Ollama), then add a Kybernos virtual key later — set `both` and the hosted tools (`kyber_*`, `prompt_*`, `lesson_search`, `memory_search`, `usage_query`, `skills_list`, `templates_list`, `modules_list`) appear next to the local ones. Nothing else changes; the same server, same client config, one env var.
+
+Hosted endpoints (all configurable):
+
+```bash
+export KYBERNOS_MCP_URL=https://api.dev.kybernos.app   # proxy base URL (default)
+export KYBERNOS_API_KEY=kys-...                        # virtual key, env only
+```
+
+Notes:
+
+- Hosted calls are forwarded over POST-only **Streamable HTTP** to `<base URL>/mcp` with a keep-alive connection and a 30s timeout; `tools/list` results are cached for 60s to avoid double-hop latency.
+- The hosted tool surface is a **frozen contract** (`v1`, 10 tools). If the proxy diverges (unknown or missing tool), you get an explicit version-mismatch error naming the tool — never a silent failure. `kyber_run` (running a kyber end-to-end) is reserved and returns an explicit `hosted-p2-required` error until proxy P2 ships.
+- Outputs coming back from the hosted backend are **sanitized** (see Security notes).
 
 ## Copy-paste install (per client)
 
@@ -196,13 +231,39 @@ Add your own in `models.json` under `"roles"` — the orchestrator auto-assigns 
 
 > "delegate to the auditor role: review this repo"
 
+## Local memory (Ruflo-lite)
+
+Every mode ships a tiny local, file-based memory — no embeddings, pure JS keyword scoring, all under a git-ignored `.orchestrator/<hash-of-cwd>/` directory next to where you launch the server (override with `LLM_ORCH_MEMORY_DIR`):
+
+- `memory.jsonl` — append-only trajectories (`{ts, cwd, taskType, model, prompt_summary, outcome}`), fed by `llm_feedback`, searched by `llm_recall`.
+- `stats.json` — **EWMA success score** per `(taskType, model)` (α = 0.2, per-update impact clamped). It *biases* model election among **healthy** models only — it can never override health checks or your explicit routing rules.
+- `lessons.json` — distilled lessons (≤ 500 chars, keyword tags, capped at 50). The best-matching lessons are auto-injected into `llm_delegate` prompts, and you can search them with `llm_recall`.
+
+Corrupted files are quarantined and regenerated — bad state never crashes the server.
+
 ## MCP tools
+
+**Local (all modes):**
 
 | Tool | Purpose |
 |---|---|
-| `llm_status` | Detect available LLMs, probe all models, compute scores, elect the best one as orchestrator |
-| `llm_delegate` | Delegate one task to the best model for its type (auto-detected), optionally with a specialist `role` |
+| `llm_status` | Detect available LLMs, probe all models, compute scores, elect the best one as orchestrator (+ hosted backend health/contract check in hosted\|both) |
+| `llm_delegate` | Delegate one task to the best model for its type (auto-detected), optionally with a specialist `role`; top-k relevant lessons injected |
 | `llm_orchestrate` | Split a request into sub-tasks, assign roles, route each one, synthesize |
+| `llm_feedback` | Record a task outcome (success/failure) + optional distilled lesson into local memory |
+| `llm_recall` | Keyword top-k retrieval over trajectories and lessons |
+
+**Hosted (`KYBERNOS_MCP_BACKEND=hosted\|both` only, frozen contract v1):**
+
+| Tool | Purpose |
+|---|---|
+| `kyber_list` / `kyber_get` | List / read your kybers (agent stacks) on the Kybernos backend |
+| `prompt_get` / `prompt_search` | Read / search saved prompts |
+| `lesson_search` | Search hosted distilled lessons |
+| `memory_search` | Search your hosted long-term memories |
+| `usage_query` | Query your token usage statistics |
+| `skills_list` / `templates_list` / `modules_list` | List skills, templates, modules |
+| `kyber_run` | **Reserved** — always returns an explicit `hosted-p2-required` error until proxy P2 ships |
 
 ### `llm_delegate` arguments
 
@@ -262,6 +323,24 @@ Everything lives in `models.json`:
 
 Per-model env overrides: `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `MISTRAL_MODEL`, `GROQ_MODEL`, `OLLAMA_BASE_URL`, and `*_BASE_URL` for each provider.
 
+Backend env vars (see *Backends*): `KYBERNOS_MCP_BACKEND` (`local` | `hosted` | `both`, default `local`), `KYBERNOS_MCP_URL` (default `https://api.dev.kybernos.app`), `KYBERNOS_API_KEY`, and `LLM_ORCH_MEMORY_DIR` for the local memory root.
+
+## Security notes
+
+- **Your key stays in your local config.** `KYBERNOS_API_KEY` is read from the environment only (the env block of your client config — the installer never writes it into any file inside the repo). It is sent solely as the `Authorization: Bearer` header to `KYBERNOS_MCP_URL`, and it is never logged, echoed, or included in any error message or telemetry. There is no telemetry.
+- **Generic hosted errors.** Auth failures return exactly `hosted backend unauthorized`; network/5xx failures return `hosted backend unavailable`. Server response bodies are never echoed back (they could leak configuration details).
+- **Redacted, capped outputs.** Anything returned by the hosted backend is sanitized before reaching your agent: `sk-…`, `kys-…` and `Bearer …` token substrings are redacted, and results are capped at 32KB with an explicit truncation marker.
+- **Only install from the official repo.** This server runs with your API keys in scope — a fork or a modified `install.sh` piped from an unknown URL can exfiltrate them. Use `github.com/platonai-net/llm-orchestrator-mcp` (or review any fork's `server.js` / `hosted.js` diff before installing). Treat `curl | bash` from untrusted sources as a supply-chain risk.
+
+## Tests
+
+Zero-dependency test suite (Node's built-in runner):
+
+```bash
+npm test    # node --test — switch logic, hosted error mapping, redaction/cap,
+            # EWMA clamp, keyword scoring, kyber_run stub, memory corruption
+```
+
 ## Troubleshooting
 
 ```bash
@@ -276,9 +355,13 @@ Check a client actually sees the server: run `llm_status` in your agent — a mo
 ```
 llm-orchestrator-mcp/
 ├── server.js        # MCP server (JSON-RPC over stdio, zero dependencies)
+├── hosted.js        # Kybernos hosted backend passthrough (Streamable HTTP, sanitized)
+├── memory.js        # Ruflo-lite local memory (trajectories, EWMA stats, lessons)
 ├── models.json      # catalog + routing rules + roles + scoring weights
 ├── models.local.json  # (optional, git-ignored) your own models/providers
-├── install.sh       # multi-client installer (Opencode, Cursor, Claude Code, Windsurf, Kimi Code)
+├── test/            # zero-dependency node:test suite
+├── .orchestrator/   # (runtime, git-ignored) local memory, namespaced per cwd
+├── install.sh       # multi-client installer (Opencode incl. .jsonc, Cursor, Claude Code, Windsurf, Kimi Code)
 ├── package.json
 └── README.md
 ```

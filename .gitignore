@@ -2,3 +2,5 @@
 node_modules/
 *.log
 models.local.json
+.orchestrator/
+.mcp.json
