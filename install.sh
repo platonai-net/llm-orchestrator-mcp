@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo
 # Ce sont les empreintes des fichiers actuels du dépôt officiel. Toute modification
 # de install.sh + fichiers servis doit mettre à jour ces empreintes à l'identique.
 readonly SERVER_SHA256="22f0810a17b4c2279eb0cb810bc643ed10705960352e7f0c900b73928344602d"
-readonly HOSTED_SHA256="b5fd6b122c1247539068135c3f7889a8998de24b4e2ec5226505cce2ef432c2b"
+readonly HOSTED_SHA256="e5393569c6860192a8a824e9ebc7441533fd85f02487fc5327b817f5f3e3c71d"
 readonly MEMORY_SHA256="7f5136c9e868f61bbdad1e2fa1bcddf9352e8006da6502c06b82fb04e5d39c0f"
 readonly MODELS_SHA256="999be1b498d1fbc5e714c73a86d8250357629af6ca49d7299c8f4a485a331e66"
 sha256_of() {

@@ -27,17 +27,26 @@ const { URL } = require("url");
 const CONTRACT_VERSION = 1;
 
 const HOSTED_TOOL_NAMES = Object.freeze([
-  "kyber_list",
+  "agent_add",
+  "agent_remove",
+  "agent_update",
+  "kyber_create",
+  "kyber_delete",
   "kyber_get",
-  "prompt_get",
-  "prompt_search",
+  "kyber_list",
+  "kyber_run",
+  "kyber_update",
+  "lesson_create",
   "lesson_search",
   "memory_search",
-  "usage_query",
+  "memory_write",
+  "modules_list",
+  "prompt_get",
+  "prompt_search",
+  "prompt_update",
   "skills_list",
   "templates_list",
-  "modules_list",
-  "kyber_run",
+  "usage_query",
 ]);
 
 const KYBER_RUN_TOOL = "kyber_run";

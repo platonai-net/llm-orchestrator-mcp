@@ -81,6 +81,39 @@ test("local mode: hosted tool calls are rejected as unknown with a hint", async 
   assert.ok(/KYBERNOS_MCP_BACKEND/.test(r.error));
 });
 
+/* ------------------------------ kyber_create routing ------------------------------ */
+
+test("kyber_create routes through the hosted client in hosted/both; rejected in local mode", async () => {
+  process.env.KYBERNOS_API_KEY = "kys-testkey123456789";
+  const calledTools = [];
+  hosted.__setFetchForTests(async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === "initialize") {
+      return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {} }) };
+    }
+    if (body.method === "tools/call") {
+      calledTools.push(body.params.name);
+      return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: `proxied ${body.params.name}` }] } }) };
+    }
+    return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+  });
+  for (const mode of ["hosted", "both"]) {
+    process.env.KYBERNOS_MCP_BACKEND = mode;
+    const r = await server.handleToolCall("kyber_create", { input: { name: "agent-1" } });
+    assert.ok(!r.error, "unexpected error: " + JSON.stringify(r));
+    assert.ok(r.content[0].text.includes("proxied kyber_create"));
+  }
+  assert.deepStrictEqual(calledTools, ["kyber_create", "kyber_create"]);
+  hosted.__setFetchForTests(null);
+
+  process.env.KYBERNOS_MCP_BACKEND = "local";
+  const rl = await server.handleToolCall("kyber_create", { input: { name: "agent-1" } });
+  assert.ok(rl.error);
+  assert.ok(/Unknown tool/.test(rl.error));
+  assert.ok(/KYBERNOS_MCP_BACKEND/.test(rl.error));
+  delete process.env.KYBERNOS_MCP_BACKEND;
+});
+
 /* ------------------------------ kyber_run forwarding ------------------------------ */
 
 test("kyber_run is forwarded through the hosted client in hosted/both (not stubbed)", async () => {

@@ -478,11 +478,11 @@ test("sanitizeDeep redacts recursively (arrays, nested objects, keys)", () => {
   assert.ok(!s.includes("Bearer abcdefghijklmnop12"));
 });
 
-test("frozen contract exposes exactly the 11 proxy tools + version", () => {
-  assert.strictEqual(hosted.HOSTED_TOOL_NAMES.length, 11);
+test("frozen contract exposes exactly the 20 proxy tools + version", () => {
+  assert.strictEqual(hosted.HOSTED_TOOL_NAMES.length, 20);
   assert.ok(Number.isInteger(hosted.CONTRACT_VERSION));
   assert.deepStrictEqual(
     [...hosted.HOSTED_TOOL_NAMES].sort(),
-    ["kyber_get", "kyber_list", "kyber_run", "lesson_search", "memory_search", "modules_list", "prompt_get", "prompt_search", "skills_list", "templates_list", "usage_query"]
+    ["agent_add", "agent_remove", "agent_update", "kyber_create", "kyber_delete", "kyber_get", "kyber_list", "kyber_run", "kyber_update", "lesson_create", "lesson_search", "memory_search", "memory_write", "modules_list", "prompt_get", "prompt_search", "prompt_update", "skills_list", "templates_list", "usage_query"]
   );
 });

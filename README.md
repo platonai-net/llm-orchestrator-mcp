@@ -100,7 +100,7 @@ export KYBERNOS_MCP_BACKEND=both     # local delegation + hosted tools
 | **Memory** | Local Ruflo-lite memory (`llm_feedback` / `llm_recall`, trajectories + EWMA stats + lessons) | Same local memory | Same local memory |
 | **Requirements** | Node ≥ 18 + ≥ 1 provider key | Node ≥ 18 + `KYBERNOS_API_KEY` | Node ≥ 18 + both |
 
-**Start local, upgrade hosted**: begin with zero cost using your existing keys (or a local Ollama), then add a Kybernos virtual key later — set `both` and the hosted tools (`kyber_*`, `prompt_*`, `lesson_search`, `memory_search`, `usage_query`, `skills_list`, `templates_list`, `modules_list`) appear next to the local ones. Nothing else changes; the same server, same client config, one env var.
+**Start local, upgrade hosted**: begin with zero cost using your existing keys (or a local Ollama), then add a Kybernos virtual key later — set `both` and the hosted tools (`kyber_*`, `agent_*`, `prompt_*`, `lesson_*`, `memory_*`, `usage_query`, `skills_list`, `templates_list`, `modules_list`) appear next to the local ones. Nothing else changes; the same server, same client config, one env var.
 
 Hosted endpoints (all configurable):
 
@@ -112,7 +112,7 @@ export KYBERNOS_API_KEY=kys-...                        # virtual key, env only
 Notes:
 
 - Hosted calls are forwarded over POST-only **Streamable HTTP** to `<base URL>/mcp` with a keep-alive connection and a 30s timeout; `tools/list` results are cached for 60s to avoid double-hop latency.
-- The hosted tool surface is a **frozen contract** (`v1`, 11 tools). If the proxy diverges (unknown or missing tool), you get an explicit version-mismatch error naming the tool — never a silent failure.
+- The hosted tool surface is a **frozen contract** (`v1`, 20 tools: `agent_add`/`agent_remove`/`agent_update`, `kyber_create`/`kyber_delete`/`kyber_get`/`kyber_list`/`kyber_run`/`kyber_update`, `lesson_create`/`lesson_search`, `memory_search`/`memory_write`, `modules_list`, `prompt_get`/`prompt_search`/`prompt_update`, `skills_list`, `templates_list`, `usage_query`). The client simply forwards every call; `prompt_update` and `lesson_create` are **server-side admin-gated** — a user key gets a fail-closed tool error from the proxy. If the proxy diverges (unknown or missing tool), you get an explicit version-mismatch error naming the tool — never a silent failure.
 - Outputs coming back from the hosted backend are **sanitized** (see Security notes).
 
 ## Copy-paste install (per client)
