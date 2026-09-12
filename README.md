@@ -332,6 +332,11 @@ Backend env vars (see *Backends*): `KYBERNOS_MCP_BACKEND` (`local` | `hosted` | 
 - **Redacted, capped outputs.** Anything returned by the hosted backend is sanitized before reaching your agent: `sk-…`, `kys-…` and `Bearer …` token substrings are redacted, and results are capped at 32KB with an explicit truncation marker.
 - **Only install from the official repo.** This server runs with your API keys in scope — a fork or a modified `install.sh` piped from an unknown URL can exfiltrate them. Use `github.com/platonai-net/llm-orchestrator-mcp` (or review any fork's `server.js` / `hosted.js` diff before installing). Treat `curl | bash` from untrusted sources as a supply-chain risk.
 
+## Reliability
+
+- **SSE multi-event.** Streamable-http replies may arrive as several SSE events (with comment lines and fragmented `data:` payloads). The client parses per event: `data:` lines are concatenated and the message whose JSON-RPC `id` matches the request is preferred (last matching message wins); a malformed event is skipped rather than thrown. A response with no valid JSON-RPC message maps to `hosted backend unavailable`.
+- **Bounded retry.** Transient failures (HTTP status ≥ 500 or a network-level error) are retried **once** (2 attempts total, 250ms backoff) but **only for requests that are safe to re-run**: pure reads (`initialize`, `tools/list`, `prompts/list`) and `tools/call` **iff** the call carries a non-empty `idempotency_token` (a billed run). A `tools/call` without a token, `401`/`403`/`404` and all other 4xx are **never** retried, so an untokened billed call can never be double-executed. On retry exhaustion the original generic error strings are returned unchanged.
+
 ## Tests
 
 Zero-dependency test suite (Node's built-in runner):
