@@ -32,17 +32,23 @@ Works with **Opencode, Cursor, Claude Code, Windsurf, Kimi Code** — and any MC
 
 ## Quick install (multi-client)
 
+**Recommended — download, inspect, then run** (never pipe straight into a shell). This server runs with your API keys in scope, so review what you run:
+
 ```bash
-git clone https://github.com/platonai-net/llm-orchestrator-mcp.git
-cd llm-orchestrator-mcp
-bash install.sh
+curl -fsSL -o install.sh https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/install.sh
+less install.sh        # inspect the installer + pinned SHA-256 hashes
+sh install.sh
 ```
 
-**Or one-liner** (no clone needed — auto-downloads to `~/.llm-orchestrator-mcp`):
+**Quick one-liner** (less safe — no inspection, and piped scripts change over time; the pinned checksums inside `install.sh` do still protect the 4 downloaded files, but you haven't reviewed the pipe itself):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/install.sh | bash
 ```
+
+> **Supply-chain warning:** only install from the official repo (`platonai-net/llm-orchestrator-mcp`). `install.sh` pins the SHA-256 of `server.js`, `hosted.js`, `memory.js` and `models.json` at download time and aborts on any mismatch — but a modified pipe (or a fork) can change that guarantee, so inspect first. See *Security notes*.
+
+Instead of the one-liner you can also clone the repo and run `install.sh` from the checkout (it then installs from the cloned files directly).
 
 The script auto-registers the server into:
 
@@ -59,6 +65,22 @@ It is **idempotent** — run it again any time, it merges without touching exist
 The installer also asks for your **backend mode** (see below) — non-interactive runs default to `local`.
 
 Then **restart your client** to load the server.
+
+## Uninstall / key rotation
+
+Remove the server and clear your `KYBERNOS_API_KEY` from the client configs:
+
+```bash
+sh install.sh --remove
+```
+
+`--remove` is **idempotent** — it deletes only the `llm-orchestrator` entries `install.sh` added (the `mcp`/`mcpServers` key in each of the 5 client config files) and deletes `~/.llm-orchestrator-mcp`. Entries belonging to other tools are left untouched. Run it with a custom `HOME` to dry-run safely:
+
+```bash
+HOME=$(mktemp -d) sh install.sh --remove   # exits 0, prints what it would remove
+```
+
+**Rotating your Kybernos key:** running `install.sh` again with the new `KYBERNOS_API_KEY` env overwrites the old key's `env` block. To clear a key entirely, run `install.sh --remove`, then re-install with the backend you want.
 
 ## Backends: local | hosted | both
 
@@ -330,7 +352,7 @@ Backend env vars (see *Backends*): `KYBERNOS_MCP_BACKEND` (`local` | `hosted` | 
 - **Your key stays in your local config.** `KYBERNOS_API_KEY` is read from the environment only (the env block of your client config — the installer never writes it into any file inside the repo). It is sent solely as the `Authorization: Bearer` header to `KYBERNOS_MCP_URL`, and it is never logged, echoed, or included in any error message or telemetry. There is no telemetry.
 - **Generic hosted errors.** Auth failures return exactly `hosted backend unauthorized`; network/5xx failures return `hosted backend unavailable`. Server response bodies are never echoed back (they could leak configuration details).
 - **Redacted, capped outputs.** Anything returned by the hosted backend is sanitized before reaching your agent: `sk-…`, `kys-…` and `Bearer …` token substrings are redacted, and results are capped at 32KB with an explicit truncation marker.
-- **Only install from the official repo.** This server runs with your API keys in scope — a fork or a modified `install.sh` piped from an unknown URL can exfiltrate them. Use `github.com/platonai-net/llm-orchestrator-mcp` (or review any fork's `server.js` / `hosted.js` diff before installing). Treat `curl | bash` from untrusted sources as a supply-chain risk.
+- **Only install from the official repo.** This server runs with your API keys in scope. `install.sh` pins the SHA-256 of the 4 downloaded files and aborts on mismatch. Prefer download-then-inspect over `curl | bash`, and treat any fork or unknown pipe as a supply-chain risk (review the diff before running).
 
 ## Reliability
 

@@ -45,6 +45,7 @@ const KYBER_RUN_TOOL = "kyber_run";
 const ERR_UNAUTHORIZED = "hosted backend unauthorized";
 const ERR_UNAVAILABLE = "hosted backend unavailable";
 const ERR_REJECTED = "hosted backend rejected the request";
+const ERR_SESSION_EXPIRED = "hosted backend session expired — re-run the call";
 const ERR_NO_KEY = "hosted backend requires KYBERNOS_API_KEY (add it to your client config env block)";
 
 const DEFAULT_BASE_URL = "https://api.dev.kybernos.app";
@@ -285,9 +286,18 @@ function createHostedBackend(options = {}) {
     if (res.status === 401 || res.status === 403) throw { __hostedError: true, message: ERR_UNAUTHORIZED };
     if (res.status >= 500) throw { __hostedError: true, message: ERR_UNAVAILABLE };
     if (res.status === 404 && sessionId && body.method && body.method !== "initialize") {
-      sessionId = null; // expired session — re-handshake once below
-      await ensureSession();
-      return post(body);
+      if (isRetrySafe(body)) {
+        // Expired session — re-handshake and replay ONLY requests that are safe
+        // to re-run (pure reads, or a billed tools/call carrying an explicit
+        // idempotency_token). Re-sending an untokened billed call after a session
+        // reset is a double-billing vector, so it is never replayed.
+        sessionId = null;
+        await ensureSession();
+        return post(body);
+      }
+      // Not safe to replay (e.g. an untokened billed tools/call). Surface a clear
+      // session-expired error instead of silently dropping or double-sending.
+      throw { __hostedError: true, message: ERR_SESSION_EXPIRED };
     }
     if (res.status < 200 || res.status >= 300) throw { __hostedError: true, message: ERR_REJECTED };
 
@@ -420,6 +430,7 @@ module.exports = {
   KYBER_RUN_TOOL,
   ERR_UNAUTHORIZED,
   ERR_UNAVAILABLE,
+  ERR_SESSION_EXPIRED,
   DEFAULT_BASE_URL,
   sanitizeText,
   sanitizeDeep,
