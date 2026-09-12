@@ -105,8 +105,14 @@ export KYBERNOS_MCP_BACKEND=both     # local delegation + hosted tools
 Hosted endpoints (all configurable):
 
 ```bash
-export KYBERNOS_MCP_URL=https://api.dev.kybernos.app   # proxy base URL (default)
+export KYBERNOS_MCP_URL=https://api.kybernos.app       # proxy base URL (default)
 export KYBERNOS_API_KEY=kys-...                        # virtual key, env only
+```
+
+To target a different tier (e.g. testing against dev/staging), override `KYBERNOS_MCP_URL`:
+
+```bash
+export KYBERNOS_MCP_URL=https://api.dev.kybernos.app   # dev tier, explicit override
 ```
 
 Notes:
@@ -345,7 +351,11 @@ Everything lives in `models.json`:
 
 Per-model env overrides: `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `MISTRAL_MODEL`, `GROQ_MODEL`, `OLLAMA_BASE_URL`, and `*_BASE_URL` for each provider.
 
-Backend env vars (see *Backends*): `KYBERNOS_MCP_BACKEND` (`local` | `hosted` | `both`, default `local`), `KYBERNOS_MCP_URL` (default `https://api.dev.kybernos.app`), `KYBERNOS_API_KEY`, and `LLM_ORCH_MEMORY_DIR` for the local memory root.
+Backend env vars (see *Backends*): `KYBERNOS_MCP_BACKEND` (`local` | `hosted` | `both`, default `local`), `KYBERNOS_MCP_URL` (default `https://api.kybernos.app`), `KYBERNOS_API_KEY`, and `LLM_ORCH_MEMORY_DIR` for the local memory root.
+
+## Environments
+
+The hosted default points to **production** (`https://api.kybernos.app`). To use a dev or staging tier, set `KYBERNOS_MCP_URL` explicitly (e.g. `https://api.dev.kybernos.app` / `https://api.staging.kybernos.app`) — it overrides the production default per environment.
 
 ## Security notes
 

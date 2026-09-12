@@ -58,7 +58,7 @@ const ERR_REJECTED = "hosted backend rejected the request";
 const ERR_SESSION_EXPIRED = "hosted backend session expired — re-run the call";
 const ERR_NO_KEY = "hosted backend requires KYBERNOS_API_KEY (add it to your client config env block)";
 
-const DEFAULT_BASE_URL = "https://api.dev.kybernos.app";
+const DEFAULT_BASE_URL = "https://api.kybernos.app";
 const MCP_PATH = "/mcp";
 const PROTOCOL_VERSION = "2025-03-26";
 const REQUEST_TIMEOUT_MS = 30_000;

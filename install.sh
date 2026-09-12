@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo
 # Ce sont les empreintes des fichiers actuels du dépôt officiel. Toute modification
 # de install.sh + fichiers servis doit mettre à jour ces empreintes à l'identique.
 readonly SERVER_SHA256="22f0810a17b4c2279eb0cb810bc643ed10705960352e7f0c900b73928344602d"
-readonly HOSTED_SHA256="e5393569c6860192a8a824e9ebc7441533fd85f02487fc5327b817f5f3e3c71d"
+readonly HOSTED_SHA256="117bcf11a69b3047d1f2c1d68cae6338a90f2094ef465d20589f2065a2b2532e"
 readonly MEMORY_SHA256="7f5136c9e868f61bbdad1e2fa1bcddf9352e8006da6502c06b82fb04e5d39c0f"
 readonly MODELS_SHA256="999be1b498d1fbc5e714c73a86d8250357629af6ca49d7299c8f4a485a331e66"
 sha256_of() {
@@ -92,8 +92,8 @@ if [ -z "$BACKEND_MODE" ] && [ -t 0 ] && [ -t 1 ]; then
     *) BACKEND_MODE="local" ;;
   esac
   if [ "$BACKEND_MODE" != "local" ]; then
-    read -rp "URL du proxy Kybernos [https://api.dev.kybernos.app] : " HOSTED_URL
-    HOSTED_URL="${HOSTED_URL:-https://api.dev.kybernos.app}"
+    read -rp "URL du proxy Kybernos [https://api.kybernos.app] : " HOSTED_URL
+    HOSTED_URL="${HOSTED_URL:-https://api.kybernos.app}"
     printf 'Clé virtuelle Kybernos (kys-...) : '
     read -rs HOSTED_KEY
     printf '\n'
