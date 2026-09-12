@@ -81,23 +81,44 @@ test("local mode: hosted tool calls are rejected as unknown with a hint", async 
   assert.ok(/KYBERNOS_MCP_BACKEND/.test(r.error));
 });
 
-/* ------------------------------ kyber_run stub ------------------------------ */
+/* ------------------------------ kyber_run forwarding ------------------------------ */
 
-test("kyber_run always returns hosted-p2-required in hosted/both (never forwarded)", async () => {
+test("kyber_run is forwarded through the hosted client in hosted/both (not stubbed)", async () => {
   process.env.KYBERNOS_API_KEY = "kys-testkey123456789";
   let forwarded = 0;
-  hosted.__setFetchForTests(async () => {
-    forwarded++;
+  const calledTools = [];
+  hosted.__setFetchForTests(async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === "initialize") {
+      return { ok: true, status: 200, headers: { get: (h) => (h === "mcp-session-id" ? "sess-1" : null) }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {} }) };
+    }
+    if (body.method === "tools/call") {
+      forwarded++;
+      calledTools.push(body.params.name);
+      return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: `proxied run for ${body.params.name}` }] } }) };
+    }
     return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
   });
   for (const mode of ["hosted", "both"]) {
     process.env.KYBERNOS_MCP_BACKEND = mode;
-    const r = await server.handleToolCall("kyber_run", { request: "do things" });
-    assert.strictEqual(r.error, "hosted-p2-required");
-    assert.strictEqual(r.message, "kyber_run lands with proxy P2 — not yet available");
+    const r = await server.handleToolCall("kyber_run", { request: "run it" });
+    assert.ok(!r.error, "unexpected error: " + JSON.stringify(r));
+    assert.ok(r.content[0].text.includes("proxied run"));
   }
-  assert.strictEqual(forwarded, 0); // NEVER hits the network
+  assert.strictEqual(calledTools.length, 2);
+  assert.ok(calledTools.every((t) => t === "kyber_run"));
+  assert.strictEqual(forwarded, 2);
   hosted.__setFetchForTests(null);
+});
+
+test("kyber_run in local mode is rejected as unknown (hosted-only hint, preserved)", async () => {
+  process.env.KYBERNOS_MCP_BACKEND = "local";
+  const r = await server.handleToolCall("kyber_run", { request: "run it" });
+  assert.ok(r.error);
+  assert.ok(/Unknown tool/.test(r.error));
+  assert.ok(/KYBERNOS_MCP_BACKEND/.test(r.error));
+  assert.notStrictEqual(r.error, "hosted-p2-required");
+  delete process.env.KYBERNOS_MCP_BACKEND;
 });
 
 /* --------------------------- hosted forwarding --------------------------- */

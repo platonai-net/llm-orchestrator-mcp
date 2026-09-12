@@ -11,8 +11,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo
 # ---------- Intégrité : SHA-256 épinglés des fichiers téléchargés ----------
 # Ce sont les empreintes des fichiers actuels du dépôt officiel. Toute modification
 # de install.sh + fichiers servis doit mettre à jour ces empreintes à l'identique.
-readonly SERVER_SHA256="7f9924406bdb816980004e97fa4fa48246f0b1999b96fdfd797852a12b2a049c"
-readonly HOSTED_SHA256="c782dced5ce958a2763752e7cc9f2cfe8a3a5770c33665523b0bcc7477f8d1b2"
+readonly SERVER_SHA256="22f0810a17b4c2279eb0cb810bc643ed10705960352e7f0c900b73928344602d"
+readonly HOSTED_SHA256="b5fd6b122c1247539068135c3f7889a8998de24b4e2ec5226505cce2ef432c2b"
 readonly MEMORY_SHA256="7f5136c9e868f61bbdad1e2fa1bcddf9352e8006da6502c06b82fb04e5d39c0f"
 readonly MODELS_SHA256="999be1b498d1fbc5e714c73a86d8250357629af6ca49d7299c8f4a485a331e66"
 sha256_of() {

@@ -585,11 +585,6 @@ async function handleToolCall(name, args) {
   }
 
   /* ---- Hosted backend tools (no local probing on this path) ---- */
-  if (name === hosted.KYBER_RUN_TOOL) {
-    if (!hostedEnabled()) return { error: `Unknown tool: ${name} (hosted-only — set ${BACKEND_ENV}=hosted|both to enable it)` };
-    // Proxy P2 (mutation tools + kyber_run) is not live yet — explicit stub, NEVER forwarded.
-    return { error: "hosted-p2-required", message: "kyber_run lands with proxy P2 — not yet available" };
-  }
   if (hosted.isHostedToolName(name)) {
     if (!hostedEnabled()) return { error: `Unknown tool: ${name} (hosted-only — set ${BACKEND_ENV}=hosted|both to enable it)` };
     const r = await hosted.getDefaultClient().callTool(name, args || {});
@@ -735,7 +730,7 @@ async function handleMessage(line) {
           "Utilise llm_delegate pour déléguer une tâche au modèle le plus adapté, llm_orchestrate pour décomposer et router une demande complexe. " +
           `Backend mode: ${mode}. ` +
           (hostedEnabled()
-            ? `Hosted Kybernos tools (frozen contract v${hosted.CONTRACT_VERSION}) are exposed and forwarded to ${hosted.DEFAULT_BASE_URL}; kyber_run is reserved until proxy P2. `
+            ? `Hosted Kybernos tools (frozen contract v${hosted.CONTRACT_VERSION}) are exposed and forwarded to ${hosted.DEFAULT_BASE_URL}. `
             : "Hosted Kybernos tools are disabled (set KYBERNOS_MCP_BACKEND=hosted|both to enable). ") +
           "Local memory: llm_feedback records outcomes/lessons, llm_recall retrieves them by keywords.",
       },

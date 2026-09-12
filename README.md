@@ -112,7 +112,7 @@ export KYBERNOS_API_KEY=kys-...                        # virtual key, env only
 Notes:
 
 - Hosted calls are forwarded over POST-only **Streamable HTTP** to `<base URL>/mcp` with a keep-alive connection and a 30s timeout; `tools/list` results are cached for 60s to avoid double-hop latency.
-- The hosted tool surface is a **frozen contract** (`v1`, 10 tools). If the proxy diverges (unknown or missing tool), you get an explicit version-mismatch error naming the tool — never a silent failure. `kyber_run` (running a kyber end-to-end) is reserved and returns an explicit `hosted-p2-required` error until proxy P2 ships.
+- The hosted tool surface is a **frozen contract** (`v1`, 11 tools). If the proxy diverges (unknown or missing tool), you get an explicit version-mismatch error naming the tool — never a silent failure.
 - Outputs coming back from the hosted backend are **sanitized** (see Security notes).
 
 ## Copy-paste install (per client)
@@ -285,7 +285,7 @@ Corrupted files are quarantined and regenerated — bad state never crashes the 
 | `memory_search` | Search your hosted long-term memories |
 | `usage_query` | Query your token usage statistics |
 | `skills_list` / `templates_list` / `modules_list` | List skills, templates, modules |
-| `kyber_run` | **Reserved** — always returns an explicit `hosted-p2-required` error until proxy P2 ships |
+| `kyber_run` | Run a kyber (agent stack) end-to-end on the hosted Kybernos backend |
 
 ### `llm_delegate` arguments
 
@@ -365,7 +365,7 @@ Zero-dependency test suite (Node's built-in runner):
 
 ```bash
 npm test    # node --test — switch logic, hosted error mapping, redaction/cap,
-            # EWMA clamp, keyword scoring, kyber_run stub, memory corruption
+            # EWMA clamp, keyword scoring, kyber_run forwarding, memory corruption
 ```
 
 ## Troubleshooting

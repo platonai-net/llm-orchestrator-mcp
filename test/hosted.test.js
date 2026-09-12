@@ -435,14 +435,14 @@ test("tools/list cache: 60s TTL avoids refetching, errors invalidate", async () 
 test("listHostedTools names tools outside/missing from the frozen contract", async () => {
   const f = mockFetch((body) => {
     if (body.method === "tools/list") {
-      return { result: { tools: [...hosted.HOSTED_TOOL_NAMES.slice(0, 9).map((n) => ({ name: n })), { name: "brand_new_tool" }] } };
+      return { result: { tools: hosted.HOSTED_TOOL_NAMES.filter((n) => n !== "kyber_run").map((n) => ({ name: n })).concat([{ name: "brand_new_tool" }]) } };
     }
     return {};
   });
   const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
   const r = await c.listHostedTools();
   assert.deepStrictEqual(r.extras, ["brand_new_tool"]);
-  assert.deepStrictEqual(r.missing, [hosted.HOSTED_TOOL_NAMES[9]]);
+  assert.deepStrictEqual(r.missing, ["kyber_run"]);
   assert.strictEqual(r.contractOk, false);
 });
 
@@ -478,11 +478,11 @@ test("sanitizeDeep redacts recursively (arrays, nested objects, keys)", () => {
   assert.ok(!s.includes("Bearer abcdefghijklmnop12"));
 });
 
-test("frozen contract exposes exactly the 10 proxy tools + version", () => {
-  assert.strictEqual(hosted.HOSTED_TOOL_NAMES.length, 10);
+test("frozen contract exposes exactly the 11 proxy tools + version", () => {
+  assert.strictEqual(hosted.HOSTED_TOOL_NAMES.length, 11);
   assert.ok(Number.isInteger(hosted.CONTRACT_VERSION));
   assert.deepStrictEqual(
     [...hosted.HOSTED_TOOL_NAMES].sort(),
-    ["kyber_get", "kyber_list", "lesson_search", "memory_search", "modules_list", "prompt_get", "prompt_search", "skills_list", "templates_list", "usage_query"]
+    ["kyber_get", "kyber_list", "kyber_run", "lesson_search", "memory_search", "modules_list", "prompt_get", "prompt_search", "skills_list", "templates_list", "usage_query"]
   );
 });

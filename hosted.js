@@ -37,6 +37,7 @@ const HOSTED_TOOL_NAMES = Object.freeze([
   "skills_list",
   "templates_list",
   "modules_list",
+  "kyber_run",
 ]);
 
 const KYBER_RUN_TOOL = "kyber_run";
@@ -167,7 +168,7 @@ function kyberRunToolSchema() {
   return {
     name: KYBER_RUN_TOOL,
     description:
-      "Run a kyber (agent stack) end-to-end on the hosted Kybernos backend. RESERVED: returns an explicit 'hosted-p2-required' error until proxy P2 ships — never forwarded.",
+      "Run a kyber (agent stack) end-to-end on the hosted Kybernos backend.",
     inputSchema: {
       type: "object",
       required: ["request"],
