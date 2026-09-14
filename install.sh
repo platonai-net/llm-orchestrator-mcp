@@ -8,6 +8,24 @@ set -euo pipefail
 REPO_RAW="https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")"
 
+# ---------- Intégrité : SHA-256 épinglés des fichiers téléchargés ----------
+# Ce sont les empreintes des fichiers actuels du dépôt officiel. Toute modification
+# de install.sh + fichiers servis doit mettre à jour ces empreintes à l'identique.
+readonly SERVER_SHA256="22f0810a17b4c2279eb0cb810bc643ed10705960352e7f0c900b73928344602d"
+readonly HOSTED_SHA256="117bcf11a69b3047d1f2c1d68cae6338a90f2094ef465d20589f2065a2b2532e"
+readonly MEMORY_SHA256="7f5136c9e868f61bbdad1e2fa1bcddf9352e8006da6502c06b82fb04e5d39c0f"
+readonly MODELS_SHA256="999be1b498d1fbc5e714c73a86d8250357629af6ca49d7299c8f4a485a331e66"
+sha256_of() {
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" 2>/dev/null | awk '{print $1}'
+  else echo ""; fi
+}
+verify_sha256() {
+  local file="$1" expected="$2" actual
+  actual="$(sha256_of "$file")"
+  [ -n "$actual" ] && [ "$actual" = "$expected" ]
+}
+
 # ---------- Résolution du dossier d'installation ----------
 # - Exécution depuis un clone  -> dossier du script
 # - Exécution via curl | bash  -> ~/.llm-orchestrator-mcp (téléchargement auto)
@@ -18,9 +36,25 @@ else
   mkdir -p "$DIR"
   for f in server.js hosted.js memory.js models.json; do
     if [ ! -f "$DIR/$f" ]; then
-      curl -fsSL "$REPO_RAW/$f" -o "$DIR/$f" || { echo "Téléchargement de $f impossible" >&2; exit 1; }
+      if ! curl -fsSL "$REPO_RAW/$f" -o "$DIR/$f"; then
+        echo "Téléchargement de $f impossible" >&2; rm -f "$DIR/$f"; exit 1
+      fi
     fi
   done
+  # Vérification d'intégrité (échec = abandon immédiat, jamais d'exécution sans contrôle)
+  for f in server.js hosted.js memory.js models.json; do
+    case "$f" in
+      server.js)  expected="$SERVER_SHA256" ;;
+      hosted.js)  expected="$HOSTED_SHA256" ;;
+      memory.js)  expected="$MEMORY_SHA256" ;;
+      models.json) expected="$MODELS_SHA256" ;;
+    esac
+    if ! verify_sha256 "$DIR/$f" "$expected"; then
+      echo "ÉCHEC d'intégrité : $f ne correspond pas à l'empreinte officielle (SHA-256). Refusez d'exécuter ce fichier." >&2
+      exit 1
+    fi
+  done
+  echo "[install] Intégrité vérifiée (SHA-256) des 4 fichiers téléchargés."
 fi
 SERVER="$DIR/server.js"
 NAME="llm-orchestrator"
@@ -58,8 +92,8 @@ if [ -z "$BACKEND_MODE" ] && [ -t 0 ] && [ -t 1 ]; then
     *) BACKEND_MODE="local" ;;
   esac
   if [ "$BACKEND_MODE" != "local" ]; then
-    read -rp "URL du proxy Kybernos [https://api.dev.kybernos.app] : " HOSTED_URL
-    HOSTED_URL="${HOSTED_URL:-https://api.dev.kybernos.app}"
+    read -rp "URL du proxy Kybernos [https://api.kybernos.app] : " HOSTED_URL
+    HOSTED_URL="${HOSTED_URL:-https://api.kybernos.app}"
     printf 'Clé virtuelle Kybernos (kys-...) : '
     read -rs HOSTED_KEY
     printf '\n'
@@ -176,6 +210,46 @@ merge_config() {
   ' "$file" "$path" "$payload"
 }
 
+# ---------- Retrait JSON générique (clé supprimée, autres clés intactes) ----------
+# Miroir de merge_config avec sémantique de SUPPRESSION : retire la clé $NAME sous le
+# chemin pointé, n'ajoute jamais rien, ne touche à aucune autre clé.
+remove_config() {
+  local file="$1" path="$2"
+  [ -f "$file" ] || return 0
+  node -e '
+    const fs=require("fs");
+    const A=process.argv.slice(-2);
+    const file=A[0],pathExpr=A[1];
+    const strip=(s)=>{let out="",i=0,n=s.length;
+      while(i<n){const c=s[i];
+        if(c==="\""){out+=c;i++;while(i<n){if(s[i]==="\\"){out+=s[i]+(s[i+1]||"");i+=2;continue;}out+=s[i];if(s[i]==="\""){i++;break;}i++;}continue;}
+        if(c==="/"&&s[i+1]==="/"){while(i<n&&s[i]!=="\n")i++;continue;}
+        if(c==="/"&&s[i+1]==="*"){i+=2;while(i<n&&!(s[i]==="*"&&s[i+1]==="/"))i++;i+=2;continue;}
+        out+=c;i++;}
+      return out;};
+    let src;try{src=fs.readFileSync(file,"utf8");}catch{process.exit(0);}
+    let doc;
+    try{doc=JSON.parse(src);}
+    catch(e){
+      const backup=file+".bak-remove";
+      try{fs.copyFileSync(file,backup);}catch{}
+      try{doc=JSON.parse(strip(src));}
+      catch(err){process.exit(0);}
+      process.stderr.write("[install] commentaires retirés de "+file+" (backup : "+backup+")\n");
+    }
+    const parts=pathExpr.match(/[^.]+|\["[^"]+"\]/g)||[];
+    let v=doc, parent=null, lastKey=null;
+    for(let i=0;i<parts.length;i++){
+      const k=parts[i].replace(/^\["|"\]$/g,"");
+      if(typeof v!=="object"||v===null) process.exit(0);
+      if(i===parts.length-1){ lastKey=k; parent=v; }
+      else v=v[k];
+    }
+    if(parent && lastKey && (lastKey in parent)){ delete parent[lastKey]; fs.writeFileSync(file,JSON.stringify(doc,null,2)+"\n",(e)=>{ if(e) process.exit(1); }); }
+    else process.exit(0);
+  ' "$file" "$path"
+}
+
 # ---------- 1) Opencode (~/.config/opencode/opencode.json[.jsonc]) ----------
 install_opencode() {
   local cfg="${OPENCODE_CONFIG:-}"
@@ -249,6 +323,56 @@ EOF
 )"
   log "Kimi Code     -> $cfg"
 }
+
+# ---------- Désinstallation (--remove) : retire uniquement ce que l'install a ajouté ----------
+uninstall_opencode() {
+  local cfg="${OPENCODE_CONFIG:-}"
+  if [ -z "$cfg" ]; then
+    local d="$HOME/.config/opencode"
+    if [ -f "$d/opencode.jsonc" ]; then cfg="$d/opencode.jsonc"; else cfg="$d/opencode.json"; fi
+  fi
+  remove_config "$cfg" "mcp.$NAME"
+  remove_config "$cfg" "mcpServers.$NAME"
+  echo "  retiré : $cfg (llm-orchestrator)"
+}
+uninstall_cursor() {
+  local cfg="${CURSOR_CONFIG:-$HOME/.cursor/mcp.json}"
+  remove_config "$cfg" "mcpServers.$NAME"
+  echo "  retiré : $cfg (llm-orchestrator)"
+}
+uninstall_claude() {
+  local global_cfg="${CLAUDE_CONFIG:-$HOME/.claude.json}"
+  remove_config "$global_cfg" "mcpServers.$NAME"
+  echo "  retiré : $global_cfg (global)"
+  remove_config "$DIR/.mcp.json" "mcpServers.$NAME"
+  echo "  retiré : $DIR/.mcp.json (projet)"
+}
+uninstall_windsurf() {
+  local cfg="${WINDSURF_CONFIG:-$HOME/.codeium/windsurf/mcp_config.json}"
+  remove_config "$cfg" "mcpServers.$NAME"
+  echo "  retiré : $cfg (llm-orchestrator)"
+}
+uninstall_kimi() {
+  local cfg="${KIMI_CONFIG:-$HOME/.kimi/mcp.json}"
+  remove_config "$cfg" "mcpServers.$NAME"
+  echo "  retiré : $cfg (llm-orchestrator)"
+}
+
+if [ "${1:-}" = "--remove" ]; then
+  echo "Désinstallation de $NAME :"
+  uninstall_opencode
+  uninstall_cursor
+  uninstall_claude
+  uninstall_windsurf
+  uninstall_kimi
+  # Seulement si installé hors clone (dossier téléchargé ~/.llm-orchestrator-mcp)
+  if [ -d "$HOME/.llm-orchestrator-mcp" ]; then
+    rm -rf "$HOME/.llm-orchestrator-mcp"
+    echo "  supprimé : $HOME/.llm-orchestrator-mcp"
+  fi
+  echo "Terminé. Désinstallation propre — aucune entrée des autres outils n'a été touchée."
+  exit 0
+fi
 
 install_opencode
 install_cursor

@@ -32,17 +32,23 @@ Works with **Opencode, Cursor, Claude Code, Windsurf, Kimi Code** — and any MC
 
 ## Quick install (multi-client)
 
+**Recommended — download, inspect, then run** (never pipe straight into a shell). This server runs with your API keys in scope, so review what you run:
+
 ```bash
-git clone https://github.com/platonai-net/llm-orchestrator-mcp.git
-cd llm-orchestrator-mcp
-bash install.sh
+curl -fsSL -o install.sh https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/install.sh
+less install.sh        # inspect the installer + pinned SHA-256 hashes
+sh install.sh
 ```
 
-**Or one-liner** (no clone needed — auto-downloads to `~/.llm-orchestrator-mcp`):
+**Quick one-liner** (less safe — no inspection, and piped scripts change over time; the pinned checksums inside `install.sh` do still protect the 4 downloaded files, but you haven't reviewed the pipe itself):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/install.sh | bash
 ```
+
+> **Supply-chain warning:** only install from the official repo (`platonai-net/llm-orchestrator-mcp`). `install.sh` pins the SHA-256 of `server.js`, `hosted.js`, `memory.js` and `models.json` at download time and aborts on any mismatch — but a modified pipe (or a fork) can change that guarantee, so inspect first. See *Security notes*.
+
+Instead of the one-liner you can also clone the repo and run `install.sh` from the checkout (it then installs from the cloned files directly).
 
 The script auto-registers the server into:
 
@@ -59,6 +65,22 @@ It is **idempotent** — run it again any time, it merges without touching exist
 The installer also asks for your **backend mode** (see below) — non-interactive runs default to `local`.
 
 Then **restart your client** to load the server.
+
+## Uninstall / key rotation
+
+Remove the server and clear your `KYBERNOS_API_KEY` from the client configs:
+
+```bash
+sh install.sh --remove
+```
+
+`--remove` is **idempotent** — it deletes only the `llm-orchestrator` entries `install.sh` added (the `mcp`/`mcpServers` key in each of the 5 client config files) and deletes `~/.llm-orchestrator-mcp`. Entries belonging to other tools are left untouched. Run it with a custom `HOME` to dry-run safely:
+
+```bash
+HOME=$(mktemp -d) sh install.sh --remove   # exits 0, prints what it would remove
+```
+
+**Rotating your Kybernos key:** running `install.sh` again with the new `KYBERNOS_API_KEY` env overwrites the old key's `env` block. To clear a key entirely, run `install.sh --remove`, then re-install with the backend you want.
 
 ## Backends: local | hosted | both
 
@@ -78,19 +100,25 @@ export KYBERNOS_MCP_BACKEND=both     # local delegation + hosted tools
 | **Memory** | Local Ruflo-lite memory (`llm_feedback` / `llm_recall`, trajectories + EWMA stats + lessons) | Same local memory | Same local memory |
 | **Requirements** | Node ≥ 18 + ≥ 1 provider key | Node ≥ 18 + `KYBERNOS_API_KEY` | Node ≥ 18 + both |
 
-**Start local, upgrade hosted**: begin with zero cost using your existing keys (or a local Ollama), then add a Kybernos virtual key later — set `both` and the hosted tools (`kyber_*`, `prompt_*`, `lesson_search`, `memory_search`, `usage_query`, `skills_list`, `templates_list`, `modules_list`) appear next to the local ones. Nothing else changes; the same server, same client config, one env var.
+**Start local, upgrade hosted**: begin with zero cost using your existing keys (or a local Ollama), then add a Kybernos virtual key later — set `both` and the hosted tools (`kyber_*`, `agent_*`, `prompt_*`, `lesson_*`, `memory_*`, `usage_query`, `skills_list`, `templates_list`, `modules_list`) appear next to the local ones. Nothing else changes; the same server, same client config, one env var.
 
 Hosted endpoints (all configurable):
 
 ```bash
-export KYBERNOS_MCP_URL=https://api.dev.kybernos.app   # proxy base URL (default)
+export KYBERNOS_MCP_URL=https://api.kybernos.app       # proxy base URL (default)
 export KYBERNOS_API_KEY=kys-...                        # virtual key, env only
+```
+
+To target a different tier (e.g. testing against dev/staging), override `KYBERNOS_MCP_URL`:
+
+```bash
+export KYBERNOS_MCP_URL=https://api.dev.kybernos.app   # dev tier, explicit override
 ```
 
 Notes:
 
 - Hosted calls are forwarded over POST-only **Streamable HTTP** to `<base URL>/mcp` with a keep-alive connection and a 30s timeout; `tools/list` results are cached for 60s to avoid double-hop latency.
-- The hosted tool surface is a **frozen contract** (`v1`, 10 tools). If the proxy diverges (unknown or missing tool), you get an explicit version-mismatch error naming the tool — never a silent failure. `kyber_run` (running a kyber end-to-end) is reserved and returns an explicit `hosted-p2-required` error until proxy P2 ships.
+- The hosted tool surface is a **frozen contract** (`v1`, 20 tools: `agent_add`/`agent_remove`/`agent_update`, `kyber_create`/`kyber_delete`/`kyber_get`/`kyber_list`/`kyber_run`/`kyber_update`, `lesson_create`/`lesson_search`, `memory_search`/`memory_write`, `modules_list`, `prompt_get`/`prompt_search`/`prompt_update`, `skills_list`, `templates_list`, `usage_query`). The client simply forwards every call; `prompt_update` and `lesson_create` are **server-side admin-gated** — a user key gets a fail-closed tool error from the proxy. If the proxy diverges (unknown or missing tool), you get an explicit version-mismatch error naming the tool — never a silent failure.
 - Outputs coming back from the hosted backend are **sanitized** (see Security notes).
 
 ## Copy-paste install (per client)
@@ -263,7 +291,7 @@ Corrupted files are quarantined and regenerated — bad state never crashes the 
 | `memory_search` | Search your hosted long-term memories |
 | `usage_query` | Query your token usage statistics |
 | `skills_list` / `templates_list` / `modules_list` | List skills, templates, modules |
-| `kyber_run` | **Reserved** — always returns an explicit `hosted-p2-required` error until proxy P2 ships |
+| `kyber_run` | Run a kyber (agent stack) end-to-end on the hosted Kybernos backend |
 
 ### `llm_delegate` arguments
 
@@ -323,14 +351,23 @@ Everything lives in `models.json`:
 
 Per-model env overrides: `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL`, `MISTRAL_MODEL`, `GROQ_MODEL`, `OLLAMA_BASE_URL`, and `*_BASE_URL` for each provider.
 
-Backend env vars (see *Backends*): `KYBERNOS_MCP_BACKEND` (`local` | `hosted` | `both`, default `local`), `KYBERNOS_MCP_URL` (default `https://api.dev.kybernos.app`), `KYBERNOS_API_KEY`, and `LLM_ORCH_MEMORY_DIR` for the local memory root.
+Backend env vars (see *Backends*): `KYBERNOS_MCP_BACKEND` (`local` | `hosted` | `both`, default `local`), `KYBERNOS_MCP_URL` (default `https://api.kybernos.app`), `KYBERNOS_API_KEY`, and `LLM_ORCH_MEMORY_DIR` for the local memory root.
+
+## Environments
+
+The hosted default points to **production** (`https://api.kybernos.app`). To use a dev or staging tier, set `KYBERNOS_MCP_URL` explicitly (e.g. `https://api.dev.kybernos.app` / `https://api.staging.kybernos.app`) — it overrides the production default per environment.
 
 ## Security notes
 
 - **Your key stays in your local config.** `KYBERNOS_API_KEY` is read from the environment only (the env block of your client config — the installer never writes it into any file inside the repo). It is sent solely as the `Authorization: Bearer` header to `KYBERNOS_MCP_URL`, and it is never logged, echoed, or included in any error message or telemetry. There is no telemetry.
 - **Generic hosted errors.** Auth failures return exactly `hosted backend unauthorized`; network/5xx failures return `hosted backend unavailable`. Server response bodies are never echoed back (they could leak configuration details).
 - **Redacted, capped outputs.** Anything returned by the hosted backend is sanitized before reaching your agent: `sk-…`, `kys-…` and `Bearer …` token substrings are redacted, and results are capped at 32KB with an explicit truncation marker.
-- **Only install from the official repo.** This server runs with your API keys in scope — a fork or a modified `install.sh` piped from an unknown URL can exfiltrate them. Use `github.com/platonai-net/llm-orchestrator-mcp` (or review any fork's `server.js` / `hosted.js` diff before installing). Treat `curl | bash` from untrusted sources as a supply-chain risk.
+- **Only install from the official repo.** This server runs with your API keys in scope. `install.sh` pins the SHA-256 of the 4 downloaded files and aborts on mismatch. Prefer download-then-inspect over `curl | bash`, and treat any fork or unknown pipe as a supply-chain risk (review the diff before running).
+
+## Reliability
+
+- **SSE multi-event.** Streamable-http replies may arrive as several SSE events (with comment lines and fragmented `data:` payloads). The client parses per event: `data:` lines are concatenated and the message whose JSON-RPC `id` matches the request is preferred (last matching message wins); a malformed event is skipped rather than thrown. A response with no valid JSON-RPC message maps to `hosted backend unavailable`.
+- **Bounded retry.** Transient failures (HTTP status ≥ 500 or a network-level error) are retried **once** (2 attempts total, 250ms backoff) but **only for requests that are safe to re-run**: pure reads (`initialize`, `tools/list`, `prompts/list`) and `tools/call` **iff** the call carries a non-empty `idempotency_token` (a billed run). A `tools/call` without a token, `401`/`403`/`404` and all other 4xx are **never** retried, so an untokened billed call can never be double-executed. On retry exhaustion the original generic error strings are returned unchanged.
 
 ## Tests
 
@@ -338,7 +375,7 @@ Zero-dependency test suite (Node's built-in runner):
 
 ```bash
 npm test    # node --test — switch logic, hosted error mapping, redaction/cap,
-            # EWMA clamp, keyword scoring, kyber_run stub, memory corruption
+            # EWMA clamp, keyword scoring, kyber_run forwarding, memory corruption
 ```
 
 ## Troubleshooting

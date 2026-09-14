@@ -27,16 +27,26 @@ const { URL } = require("url");
 const CONTRACT_VERSION = 1;
 
 const HOSTED_TOOL_NAMES = Object.freeze([
-  "kyber_list",
+  "agent_add",
+  "agent_remove",
+  "agent_update",
+  "kyber_create",
+  "kyber_delete",
   "kyber_get",
-  "prompt_get",
-  "prompt_search",
+  "kyber_list",
+  "kyber_run",
+  "kyber_update",
+  "lesson_create",
   "lesson_search",
   "memory_search",
-  "usage_query",
+  "memory_write",
+  "modules_list",
+  "prompt_get",
+  "prompt_search",
+  "prompt_update",
   "skills_list",
   "templates_list",
-  "modules_list",
+  "usage_query",
 ]);
 
 const KYBER_RUN_TOOL = "kyber_run";
@@ -45,15 +55,21 @@ const KYBER_RUN_TOOL = "kyber_run";
 const ERR_UNAUTHORIZED = "hosted backend unauthorized";
 const ERR_UNAVAILABLE = "hosted backend unavailable";
 const ERR_REJECTED = "hosted backend rejected the request";
+const ERR_SESSION_EXPIRED = "hosted backend session expired — re-run the call";
 const ERR_NO_KEY = "hosted backend requires KYBERNOS_API_KEY (add it to your client config env block)";
 
-const DEFAULT_BASE_URL = "https://api.dev.kybernos.app";
+const DEFAULT_BASE_URL = "https://api.kybernos.app";
 const MCP_PATH = "/mcp";
 const PROTOCOL_VERSION = "2025-03-26";
 const REQUEST_TIMEOUT_MS = 30_000;
 const LIST_CACHE_TTL_MS = 60_000;
 const RESULT_CAP_BYTES = 32 * 1024;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024; // defensive read cap on proxy responses
+
+// Bounded retry: ONE retry (2 attempts total) on transient 5xx / network errors,
+// backoff 250ms. Only safe methods ever retry — see isRetrySafe.
+const RETRY_BACKOFF_MS = 250;
+const RETRY_SAFE_METHODS = ["initialize", "tools/list", "prompts/list"];
 
 /* --------------------------- output sanitation --------------------------- */
 
@@ -161,7 +177,7 @@ function kyberRunToolSchema() {
   return {
     name: KYBER_RUN_TOOL,
     description:
-      "Run a kyber (agent stack) end-to-end on the hosted Kybernos backend. RESERVED: returns an explicit 'hosted-p2-required' error until proxy P2 ships — never forwarded.",
+      "Run a kyber (agent stack) end-to-end on the hosted Kybernos backend.",
     inputSchema: {
       type: "object",
       required: ["request"],
@@ -175,23 +191,63 @@ function isHostedToolName(name) {
 }
 
 function parseSse(raw, wantId) {
+  // Split into events on blank lines per the SSE spec. Within one event the
+  // payload is the concatenation of its `data:` lines (joined with "\n"
+  // before JSON.parse). Comment lines (":") and empty data are ignored and a
+  // non-JSON event payload is skipped, never thrown. Zero valid messages
+  // keeps the previous ERR_UNAVAILABLE contract.
   let match = null;
   let last = null;
+  let eventData = null; // concatenated data lines of the current event
   for (const line of String(raw).split(/\r?\n/)) {
-    if (!line.startsWith("data:")) continue;
-    const data = line.slice(5).trim();
-    if (!data) continue;
+    if (line.length === 0) {
+      if (eventData !== null) {
+        try {
+          const msg = JSON.parse(eventData);
+          last = msg;
+          if (wantId !== undefined && msg.id === wantId) match = msg;
+        } catch {
+          /* skip malformed event payload */
+        }
+        eventData = null;
+      }
+      continue;
+    }
+    if (line.startsWith(":")) continue; // SSE comment
+    if (line.startsWith("data:")) {
+      const data = line.slice(5);
+      eventData = eventData === null ? data : eventData + "\n" + data;
+    }
+  }
+  // Flush any trailing event that was not followed by a blank line.
+  if (eventData !== null) {
     try {
-      const msg = JSON.parse(data);
+      const msg = JSON.parse(eventData);
       last = msg;
       if (wantId !== undefined && msg.id === wantId) match = msg;
     } catch {
-      /* skip SSE fragment */
+      /* skip malformed event payload */
     }
   }
   const picked = match || last;
   if (!picked) throw { __hostedError: true, message: ERR_UNAVAILABLE };
   return picked;
+}
+
+function isRetrySafe(body) {
+  const method = body && body.method;
+  if (RETRY_SAFE_METHODS.indexOf(method) !== -1) return true;
+  // tools/call is a billed run: only retry when an explicit idempotency_token
+  // protects the attempt from double-billing.
+  if (method === "tools/call") {
+    const token = body.params && body.params.arguments && body.params.arguments.idempotency_token;
+    return typeof token === "string" && token.length > 0;
+  }
+  return false; // unknown methods / notifications are never retried
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 function createHostedBackend(options = {}) {
@@ -216,20 +272,42 @@ function createHostedBackend(options = {}) {
     };
     if (sessionId) headers["mcp-session-id"] = sessionId;
 
+    // Bounded retry (ONE retry, 2 attempts total) purely on transient status
+    // (>=500) or network-level fetch failures, ONLY for requests that are safe
+    // to re-run. 401/403/404 and all other 4xx are never retried.
+    const retryable = isRetrySafe(body);
     let res;
-    try {
-      res = await fetchImpl(url, { method: "POST", headers, body: JSON.stringify(body) });
-    } catch {
-      throw { __hostedError: true, message: ERR_UNAVAILABLE };
+    let lastError = null;
+    for (let attempt = 1; attempt <= (retryable ? 2 : 1); attempt++) {
+      try {
+        if (attempt > 1) await sleep(RETRY_BACKOFF_MS);
+        res = await fetchImpl(url, { method: "POST", headers, body: JSON.stringify(body) });
+        lastError = null;
+        if (res.status < 500) break; // 2xx/3xx or a non-transient 4xx — no more attempts
+      } catch (err) {
+        lastError = err;
+        if (!retryable) break; // network error on a non-retryable request — surface now
+        // else: retryable network error -> fall through to next attempt
+      }
     }
+    if (lastError) throw { __hostedError: true, message: ERR_UNAVAILABLE };
 
     // Generic error mapping — status only, no body, no URL, no key.
     if (res.status === 401 || res.status === 403) throw { __hostedError: true, message: ERR_UNAUTHORIZED };
     if (res.status >= 500) throw { __hostedError: true, message: ERR_UNAVAILABLE };
     if (res.status === 404 && sessionId && body.method && body.method !== "initialize") {
-      sessionId = null; // expired session — re-handshake once below
-      await ensureSession();
-      return post(body);
+      if (isRetrySafe(body)) {
+        // Expired session — re-handshake and replay ONLY requests that are safe
+        // to re-run (pure reads, or a billed tools/call carrying an explicit
+        // idempotency_token). Re-sending an untokened billed call after a session
+        // reset is a double-billing vector, so it is never replayed.
+        sessionId = null;
+        await ensureSession();
+        return post(body);
+      }
+      // Not safe to replay (e.g. an untokened billed tools/call). Surface a clear
+      // session-expired error instead of silently dropping or double-sending.
+      throw { __hostedError: true, message: ERR_SESSION_EXPIRED };
     }
     if (res.status < 200 || res.status >= 300) throw { __hostedError: true, message: ERR_REJECTED };
 
@@ -362,6 +440,7 @@ module.exports = {
   KYBER_RUN_TOOL,
   ERR_UNAUTHORIZED,
   ERR_UNAVAILABLE,
+  ERR_SESSION_EXPIRED,
   DEFAULT_BASE_URL,
   sanitizeText,
   sanitizeDeep,

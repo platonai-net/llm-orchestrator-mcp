@@ -173,6 +173,232 @@ test("calling a tool outside the frozen contract is rejected locally, naming the
   assert.ok(r.message.includes(String(hosted.CONTRACT_VERSION)));
 });
 
+/* ------------------------- SSE multi-message hardening ------------------------- */
+
+test("SSE multi-event: fragmented data: lines concatenate and id match beats last", async () => {
+  const f = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === "initialize") return { ok: true, status: 200, headers: { get: (h) => (h === "mcp-session-id" ? "sess-1" : null) }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {} }) };
+    if (body.method === "notifications/initialized") return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+    if (body.method === "tools/call") {
+      // Events: one for unrelated id, one garbage, then the requested id
+      // whose payload is fragmented across two data: lines.
+      const matchId = body.id;
+      const payload = JSON.stringify({ jsonrpc: "2.0", id: matchId, result: { content: [{ type: "text", text: "matched" }] } });
+      // fragment the payload mid-string on a safe boundary (after the `id:` value)
+      const fragAt = payload.indexOf(`"id":${matchId},`) + `"id":${matchId},`.length;
+      const p1 = payload.slice(0, fragAt);
+      const p2 = payload.slice(fragAt);
+      const sse =
+        `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: 999, result: { content: [{ type: "text", text: "other" }] } })}\n\n` +
+        `event: message\n: comment line should be ignored\ndata: {not valid json}\n\n` +
+        `event: message\ndata: ${p1}\ndata: ${p2}\n\n`;
+      return { ok: true, status: 200, headers: { get: (h) => (h === "content-type" ? "text/event-stream" : null) }, text: async () => sse };
+    }
+    return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+  };
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.callTool("skills_list", {});
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.payload.content[0].text, "matched"); // id match, not the "other" last message
+});
+
+test("SSE: garbage-only and empty streams fall back to ERR_UNAVAILABLE", async () => {
+  const f = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === "initialize") return { ok: true, status: 200, headers: { get: (h) => (h === "mcp-session-id" ? "sess-1" : null) }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {} }) };
+    if (body.method === "notifications/initialized") return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+    if (body.method === "tools/call") {
+      return { ok: true, status: 200, headers: { get: (h) => (h === "content-type" ? "text/event-stream" : null) }, text: async () => `event: message\ndata: {garbage}\n\n: comment only\n\ndata:\n\n` };
+    }
+    return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+  };
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.callTool("skills_list", {});
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.message, hosted.ERR_UNAVAILABLE);
+});
+
+test("SSE multi-event: picks the id match even when it is not the last event", async () => {
+  const f = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === "initialize") return { ok: true, status: 200, headers: { get: (h) => (h === "mcp-session-id" ? "sess-1" : null) }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {} }) };
+    if (body.method === "notifications/initialized") return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+    if (body.method === "tools/call") {
+      const sse =
+        `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: "first-match" }] } })}\n\n` +
+        `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id + 1, result: { content: [{ type: "text", text: "later-no-match" }] } })}\n\n`;
+      return { ok: true, status: 200, headers: { get: (h) => (h === "content-type" ? "text/event-stream" : null) }, text: async () => sse };
+    }
+    return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+  };
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.callTool("kyber_list", {});
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.payload.content[0].text, "first-match");
+});
+
+/* --------------------------- bounded 5xx / network retry --------------------------- */
+
+function retryFetch(sequence) {
+  // sequence: array of { status, body?, contentType? } for tools/call and
+  // tools/list only. initialize + notifications/initialized are auto-succeeded.
+  // Returns a mock with a call counter.
+  const calls = { total: 0, call: 0, list: 0 };
+  const fn = async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.total++;
+    if (body.method === "initialize") return { ok: true, status: 200, headers: { get: (h) => (h === "mcp-session-id" ? "sess-1" : null) }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {} }) };
+    if (body.method === "notifications/initialized") return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+    if (body.method === "tools/call") calls.call++;
+    if (body.method === "tools/list") calls.list++;
+    const item = sequence.splice(0, 1)[0] || { status: 200 };
+    const s = item.status;
+    const ctype = item.contentType || "application/json";
+    let text = "";
+    if (s >= 200 && s < 300 && body.id !== undefined) {
+      text = JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: "ok" }] } });
+    }
+    return { ok: s >= 200 && s < 300, status: s, headers: { get: (h) => (h === "content-type" ? ctype : null) }, text: async () => text };
+  };
+  fn.calls = calls;
+  return fn;
+}
+
+test("retry: 500-then-success for tools/list issues exactly 2 fetch calls", async () => {
+  const f = retryFetch([{ status: 500 }, { status: 200 }]);
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.listHostedTools();
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(f.calls.list, 2); // list(500) + retried list(200)
+});
+
+test("retry: 500-then-success for tools/call WITH idempotency_token issues 2 calls", async () => {
+  const f = retryFetch([{ status: 500 }, { status: 200 }]);
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.callTool("kyber_get", { id: "x", idempotency_token: "tok-123" });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(f.calls.call, 2); // tools/call(500) + retried tools/call(200)
+});
+
+test("retry: 500 for tools/call WITHOUT token is never retried (1 call, error)", async () => {
+  const f = retryFetch([{ status: 500 }]);
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.callTool("kyber_get", { id: "x" });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.message, hosted.ERR_UNAVAILABLE);
+  assert.strictEqual(f.calls.call, 1); // exactly one attempt
+});
+
+test("retry: 500-then-success for tools/call WITH token returns the retried result", async () => {
+  const f = retryFetch([{ status: 500 }, { status: 200 }]);
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.callTool("kyber_get", { id: "x", idempotency_token: "tok" });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.payload.content[0].text, "ok");
+});
+
+test("retry: network error then success on tools/list retries to success", async () => {
+  let n = 0;
+  const f = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === "initialize") return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {} }) };
+    if (body.method === "tools/list") {
+      n++;
+      if (n === 1) throw new Error("ECONNRESET");
+      return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { tools: hosted.HOSTED_TOOL_NAMES.map((t) => ({ name: t })) } }) };
+    }
+    return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+  };
+  f.calls = { list: () => n };
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.listHostedTools();
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.contractOk, true);
+  assert.strictEqual(n, 2);
+});
+
+test("retry: 401 is never retried (single attempt)", async () => {
+  const f = retryFetch([{ status: 401 }]);
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.callTool("kyber_list", {});
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.message, hosted.ERR_UNAUTHORIZED);
+  assert.strictEqual(f.calls.call, 1); // never retried
+});
+
+/* --------------------------- 404 session-expiry replay --------------------------- */
+/* A 404 mid-session means the proxy session expired. Only requests safe to re-run
+ * (pure reads, or a billed tools/call with an explicit idempotency_token) are
+ * replayed after re-handshake. An untokened billed call is never re-sent — that
+ * would be a double-billing vector. */
+
+test("404 + untokened tools/call is NOT replayed (1 send, session-expired error)", async () => {
+  let calls = 0;
+  const f = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === "initialize") return { ok: true, status: 200, headers: { get: (h) => (h === "mcp-session-id" ? "sess-1" : null) }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {} }) };
+    if (body.method === "notifications/initialized") return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+    if (body.method === "tools/call") {
+      calls++;
+      return { ok: false, status: 404, headers: { get: (h) => (h === "mcp-session-id" ? "sess-1" : null) }, text: async () => "" };
+    }
+    return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+  };
+  f.calls = () => calls;
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.callTool("kyber_get", { id: "x" });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.message, hosted.ERR_SESSION_EXPIRED);
+  assert.strictEqual(calls, 1); // exactly one tools/call send — never replayed
+});
+
+test("404 + tokened tools/call replays successfully (2 sends)", async () => {
+  let calls = 0;
+  let replayed = false;
+  const f = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === "initialize") return { ok: true, status: 200, headers: { get: (h) => (h === "mcp-session-id" ? "sess-1" : null) }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {} }) };
+    if (body.method === "notifications/initialized") return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+    if (body.method === "tools/call") {
+      calls++;
+      if (!replayed) {
+        replayed = true;
+        return { ok: false, status: 404, headers: { get: (h) => (h === "mcp-session-id" ? "sess-1" : null) }, text: async () => "" };
+      }
+      return { ok: true, status: 200, headers: { get: (h) => (h === "mcp-session-id" ? "sess-2" : null) }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: "replayed" }] } }) };
+    }
+    return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+  };
+  f.calls = () => calls;
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.callTool("kyber_get", { id: "x", idempotency_token: "tok" });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.payload.content[0].text, "replayed");
+  assert.strictEqual(calls, 2); // original + replayed after re-handshake
+});
+
+test("404 + tools/list replays after re-handshake (2 list sends)", async () => {
+  let listCalls = 0;
+  const f = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === "initialize") return { ok: true, status: 200, headers: { get: (h) => (h === "mcp-session-id" ? "sess-1" : null) }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: {} }) };
+    if (body.method === "notifications/initialized") return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+    if (body.method === "tools/list") {
+      listCalls++;
+      if (listCalls === 1) return { ok: false, status: 404, headers: { get: () => null }, text: async () => "" };
+      return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { tools: hosted.HOSTED_TOOL_NAMES.map((n) => ({ name: n })) } }) };
+    }
+    return { ok: true, status: 202, headers: { get: () => null }, text: async () => "" };
+  };
+  f.calls = () => listCalls;
+  const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
+  const r = await c.listHostedTools();
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.contractOk, true);
+  assert.strictEqual(listCalls, 2); // list(404) + replayed list after re-handshake
+});
+
 /* ------------------------------ list cache (TTL) ------------------------------ */
 
 test("tools/list cache: 60s TTL avoids refetching, errors invalidate", async () => {
@@ -209,14 +435,14 @@ test("tools/list cache: 60s TTL avoids refetching, errors invalidate", async () 
 test("listHostedTools names tools outside/missing from the frozen contract", async () => {
   const f = mockFetch((body) => {
     if (body.method === "tools/list") {
-      return { result: { tools: [...hosted.HOSTED_TOOL_NAMES.slice(0, 9).map((n) => ({ name: n })), { name: "brand_new_tool" }] } };
+      return { result: { tools: hosted.HOSTED_TOOL_NAMES.filter((n) => n !== "kyber_run").map((n) => ({ name: n })).concat([{ name: "brand_new_tool" }]) } };
     }
     return {};
   });
   const c = hosted.createHostedBackend({ fetchImpl: f, apiKey: KEY });
   const r = await c.listHostedTools();
   assert.deepStrictEqual(r.extras, ["brand_new_tool"]);
-  assert.deepStrictEqual(r.missing, [hosted.HOSTED_TOOL_NAMES[9]]);
+  assert.deepStrictEqual(r.missing, ["kyber_run"]);
   assert.strictEqual(r.contractOk, false);
 });
 
@@ -252,11 +478,11 @@ test("sanitizeDeep redacts recursively (arrays, nested objects, keys)", () => {
   assert.ok(!s.includes("Bearer abcdefghijklmnop12"));
 });
 
-test("frozen contract exposes exactly the 10 proxy tools + version", () => {
-  assert.strictEqual(hosted.HOSTED_TOOL_NAMES.length, 10);
+test("frozen contract exposes exactly the 20 proxy tools + version", () => {
+  assert.strictEqual(hosted.HOSTED_TOOL_NAMES.length, 20);
   assert.ok(Number.isInteger(hosted.CONTRACT_VERSION));
   assert.deepStrictEqual(
     [...hosted.HOSTED_TOOL_NAMES].sort(),
-    ["kyber_get", "kyber_list", "lesson_search", "memory_search", "modules_list", "prompt_get", "prompt_search", "skills_list", "templates_list", "usage_query"]
+    ["agent_add", "agent_remove", "agent_update", "kyber_create", "kyber_delete", "kyber_get", "kyber_list", "kyber_run", "kyber_update", "lesson_create", "lesson_search", "memory_search", "memory_write", "modules_list", "prompt_get", "prompt_search", "prompt_update", "skills_list", "templates_list", "usage_query"]
   );
 });
