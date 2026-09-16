@@ -74,10 +74,14 @@ texte, pas un comportement.
 
 Les prompts de rôles, la doctrine de parallélisme (`cap` dur à 6, zéro lancement
 spéculatif avant GO, definition of done vérifiable par commande, garde de
-récursion) et les gabarits de domaines sont **adaptés du projet
-[`platonai-net/kybernos`](https://github.com/platonai-net/kybernos)** — traduits et
-condensés. Le contenu est **recopié, jamais lié** : un kyber doit être autonome,
-sinon il n'est installable nulle part.
+récursion) et les gabarits de domaines sont **adaptés du projet interne
+`kybernos`** — traduits, condensés, et recopiés dans chaque fichier plutôt que
+liés.
+
+**Pourquoi pas de lien** : le dépôt source n'est pas public à ce jour, donc une
+URL renverrait 404. Un crédit qui ne résout pas est pire que pas de crédit — le
+lecteur ne peut pas vérifier l'origine, et ça ressemble à une revendication en
+l'air. Le lien sera rétabli si la source est publiée.
 
 ## Limites connues du format
 
@@ -95,6 +99,8 @@ réels et non corrigés — les taire serait pire que les documenter.
 | **Pas de contrat d'artefacts** | Aucun champ ne dit où un étage écrit ses sorties. Deux kybers ont inventé `$RUN/…` séparément, avec des conventions différentes. C'est leur principale fragilité. |
 | **Pas d'état inter-runs** | `memory:` ne porte que des scores de routage. « Ce qui a changé depuis le dernier cycle » — le cœur d'une veille — n'a nulle part où être rangé. |
 | **Pas d'enveloppe de ressources** | La doctrine impose un budget en minutes par contrat, avec des plafonds par rôle. Rien de déclarable ; `maxDepth` borne la cascade, pas le coût. |
+| **Aucun mécanisme d'arrêt ni d'escalade** | C'est le manque le plus grave. La doctrine définit un disjoncteur (« > 30 % de tâches bloquées → arrêt du run + escalade humaine ») et une chaîne d'escalade à déclencheurs observés (même signature d'erreur 2×, 3 tentatives sans progrès). Aucun champ ne permet d'**arrêter un run ni d'interroger l'humain pendant qu'il tourne** — `elucidation` interroge *avant* de composer, jamais pendant. Un kyber réel a dû dégrader la règle en simple mention dans le rapport : le « passer au suivant » et l'escalade ont disparu. **Toutes les règles qui empêchent de boucler indéfiniment atterrissent ici.** |
+| **Les dépendances binaires ne sont déclarables nulle part** | Des `definitionOfDone` réelles s'appuient sur `jq` et `git`. `tools:` sert aux connecteurs, pas aux exécutables : rien ne dit qu'un étage refuse de tourner sans `jq`, ni où le déclarer. Une DoD peut donc être inapplicable sur la machine cible **sans que rien ne le signale à l'installation**. |
 
 ## État de vérification
 
