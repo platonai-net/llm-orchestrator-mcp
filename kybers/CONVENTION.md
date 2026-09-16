@@ -448,7 +448,7 @@ devient à son tour un utilisateur qui produira des rapports partageables.
 ```
 — kyber audit · par @miled
   pour l'installer, colle ceci dans ton agent :
-  https://github.com/kybernos/kybernos/blob/main/INSTALL-PROMPT.md#audit
+  https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/INSTALL-PROMPT.md
 ```
 
 **Pourquoi ce n'est pas de la vanity metric.** La signature produit un effet
