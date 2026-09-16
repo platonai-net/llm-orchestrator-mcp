@@ -38,8 +38,7 @@ of done fails both if one is missing there and if one is cited in the body.
 
 ## Use it — and don't
 
-Use it when findings must not be arguable away: a release gate, a due diligence, a security posture you have to state in writing. One run per surface, not
-continuously.
+Use it when findings must not be arguable away: a release gate, a due diligence, a security posture to state in writing. One run per surface, not continuously.
 
 Not to fix anything (read-only, checked by an empty `git status --porcelain`), not as a style review (out of scope), not for pentest-grade work (no destructive
 load, no out-of-scope target), not for judgement-type findings (see Limits), and not when the scope must be settled *with you before* the run starts:
@@ -47,8 +46,8 @@ load, no out-of-scope target), not for judgement-type findings (see Limits), and
 
 ## Install
 
-Full block and variants (local folder, publishing your own): [`../INSTALL-PROMPT.md`](../INSTALL-PROMPT.md). Validate first: `node kybers/lint.cjs
---dir=$PWD/kybers audit` → `PASS audit`. One line, for a chat message or a report footer:
+Full block and variants (local folder, publishing your own): [`../INSTALL-PROMPT.md`](../INSTALL-PROMPT.md). Validate first:
+`node kybers/lint.cjs --dir=$PWD/kybers audit` → `PASS audit`. One line, for a chat message or a report footer:
 
 ```text
 Install the kyber "audit": https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/audit/kyber.yml — procedure: https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/INSTALL-PROMPT.md — read the spec in full, show me every role prompt IN FULL and the role → model table before writing anything, then wait for my confirmation.

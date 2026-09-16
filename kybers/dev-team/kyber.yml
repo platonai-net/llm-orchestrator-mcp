@@ -2,197 +2,195 @@ id: dev-team
 specVersion: 2
 
 # ─────────────────────────────────────────────────────────────────────────────
-# dev-team — équipe de développement logiciel complète.
+# dev-team — a complete software development team.
 #
-# Contenu traduit et condensé depuis les prompts système et les skills du projet
-# kybernos : orchestrator.md, doer.md, doer-expert.md, tester.md, checker.md,
-# github-manager.md, et les skills kybernos-parallel / kybernos-delegation.
-# Ce fichier est AUTONOME : il ne renvoie à aucun de ces documents.
+# Content translated and condensed from the system prompts and the skills of the
+# kybernos project: orchestrator.md, doer.md, doer-expert.md, tester.md,
+# checker.md, github-manager.md, and the kybernos-parallel / kybernos-delegation
+# skills. This file is SELF-CONTAINED: it refers to none of those documents.
 # ─────────────────────────────────────────────────────────────────────────────
 
 mission: >-
-  Prendre une demande de développement logiciel de bout en bout — cartographie
-  du dépôt, cadrage en lots disjoints, spécification, porte GO explicite,
-  implémentation parallèle bornée, test des parcours utilisateur, revue
-  adversariale du diff — et livrer un changement dont le « terminé » est prouvé
-  par commande. Ne fait pas d'audit de sécurité isolé, ne rédige pas de
-  documentation produit, ne conçoit pas d'interface.
+  Take a software development request end to end — repository mapping, framing
+  into disjoint batches, specification, an explicit GO gate, bounded parallel
+  implementation, user-journey testing, adversarial review of the diff — and
+  deliver a change whose "done" is proven by command. Does not run a standalone
+  security audit, does not write product documentation, does not design an
+  interface.
 
-# Forme : PIPELINE À PORTE. La topologie n'est pas un choix esthétique, c'est la
-# forme réelle du travail : chaque étage consomme la sortie du précédent
-# (carte → lots → specs → GO → implémentation → test → réfutation → livraison).
+# Shape: PIPELINE WITH A GATE. The topology is not an aesthetic choice, it is the
+# real shape of the work: each stage consumes the output of the previous one
+# (map → batches → specs → GO → implementation → test → refutation → delivery).
 #
-# Pourquoi pas les autres formes :
-#   - `pool` est interdit de fait : un réservoir n'a aucune dépendance, donc ni
-#     porte, ni étage adversarial — les deux mécanismes qui font la valeur de
-#     cette équipe (la doctrine kybernos-parallel interdit tout lancement
-#     d'implémentation avant un GO explicite, ce qui suppose une dépendance) ;
-#   - `adversarial` décrirait une machine à réfuter ; ici la réfutation est UN
-#     étage sur huit, pas la forme de l'équipe ;
-#   - `mapreduce` ne décrit que l'itération sur les lots, qui est portée par
-#     `mode: forEach` à l'intérieur du pipeline ;
-#   - `loop` suppose une répétition bornée avec condition de sortie comme
-#     moteur unique ; ici la boucle existe (cycles AMEND) mais le format ne sait
-#     pas l'exprimer — voir le commentaire de l'étage `porte-spec`.
+# Why not the other shapes:
+#   - `pool` is ruled out in fact: a reservoir has no dependency, therefore
+#     neither a gate nor an adversarial stage — the two mechanisms that give this
+#     team its value (the kybernos-parallel doctrine forbids any implementation
+#     launch before an explicit GO, which presupposes a dependency);
+#   - `adversarial` would describe a refutation machine; here refutation is ONE
+#     stage out of eight, not the shape of the team;
+#   - `mapreduce` describes only the iteration over the batches, which is carried
+#     by `mode: forEach` inside the pipeline;
+#   - `loop` presupposes a bounded repetition with an exit condition as the single
+#     engine; here the loop exists (AMEND cycles) but the format cannot express
+#     it — see the comment on the `porte-spec` stage.
 topology: pipeline
 
-# `required` et non `none` : la doctrine kybernos refuse le lancement spéculatif
-# et une spec écrite sur une hypothèse non dite est exactement le défaut que la
-# taxonomie de blame (`spec-error`, `exploration-error`) existe pour attraper.
-# L'équipe interroge donc l'humain AVANT de se composer, pas après avoir échoué.
+# `required` and not `none`: the kybernos doctrine refuses speculative launch,
+# and a spec written on an unstated hypothesis is exactly the defect the blame
+# taxonomy (`spec-error`, `exploration-error`) exists to catch. The team
+# therefore interrogates the human BEFORE composing itself, not after failing.
 elucidation: required
 
-# Un sous-agent ne se re-délègue pas : la cascade est bornée à depth=1, et sur
-# des routes read-only uniquement (la doctrine kybernos-delegation interdit
-# `doer`→`doer`, tout `escalade` depuis un sous-agent, et toute cascade depuis
-# un testeur, un vérificateur ou un cartographe). Au-delà de 1, personne ne sait
-# plus qui a lancé quoi ni à qui imputer un échec.
+# A subagent does not re-delegate: the cascade is bounded at depth=1, and only on
+# read-only routes (the kybernos-delegation doctrine forbids `doer`→`doer`, any
+# `escalation` from a subagent, and any cascade from a tester, a checker or a
+# mapper). Beyond 1, nobody knows any more who launched what, nor whom to blame
+# for a failure.
 maxDepth: 1
 
 stages:
-  # Reconnaissance read-only. Aucune parallélisation déclarable ici : c'est
-  # l'étage racine, il n'a pas d'`inputs`, donc `mode: forEach` est refusé par le
-  # validateur — et la doctrine kybernos-parallel autorise pourtant « N scouts
-  # read-only sur des zones disjonctes ». Ce fan-out est donc perdu à la
-  # déclaration et reporté dans le prompt du cartographe. Voir le rapport.
+  # Read-only reconnaissance. No parallelism is declarable here: this is the root
+  # stage, it has no `inputs`, so `mode: forEach` is refused by the validator —
+  # and yet the kybernos-parallel doctrine allows "N read-only scouts over
+  # disjoint areas". This fan-out is therefore lost at declaration time and
+  # reported in the mapper's prompt. See the report.
   - id: cartographie
     roles: [cartographe]
     mode: once
 
-  # Le cadrage produit les lots disjoints et les contrats de délégation. Il ne
-  # produit pas de code : l'orchestrateur a `edit: deny` dans la doctrine.
+  # Framing produces the disjoint batches and the delegation contracts. It
+  # produces no code: the orchestrator has `edit: deny` in the doctrine.
   - id: cadrage
     roles: [orchestrateur]
     mode: once
     inputs: [cartographie]
 
-  # Un étage, plusieurs agents en parallèle : un rédacteur de spec par lot. Le
-  # `cap` est donc obligatoire ici — voir la doctrine du plafond ci-dessous.
+  # One stage, several agents in parallel: one spec writer per batch. The `cap`
+  # is therefore mandatory here — see the ceiling doctrine below.
   - id: specification
     roles: [redacteur-spec]
     mode: forEach
     inputs: [cadrage]
     cap: 6
 
-  # LA PORTE. C'est ici, et ici seulement, que se décide le lancement d'une
-  # implémentation. La doctrine kybernos-parallel est sans nuance : « Zéro
-  # lancement spéculatif pré-GO : aucune implémentation ne part avant le GO du
-  # pipeline ». Le parallélisme optimise la latence, jamais le droit de
-  # court-circuiter la validation — donc rien en aval ne démarre avant ce
-  # verdict, et `gate: true` est ce qui le rend structurel plutôt que rhétorique.
+  # THE GATE. Here, and only here, is the launch of an implementation decided.
+  # The kybernos-parallel doctrine is unambiguous: "Zero speculative launch
+  # pre-GO: no implementation starts before the pipeline's GO". Parallelism
+  # optimises latency, never the right to short-circuit validation — so nothing
+  # downstream starts before this verdict, and `gate: true` is what makes it
+  # structural rather than rhetorical.
   #
-  # Ce que le format ne sait PAS exprimer ici : le verdict de la doctrine est
-  # ternaire (GO | AMEND | NO-GO) et AMEND renvoie la spec à l'étage `cadrage`
-  # ou `specification` — soit une arête ARRIÈRE. Le validateur refuse tout
-  # `inputs` qui cite un étage déclaré après, donc une arête arrière est un
-  # cycle = une erreur. Le cycle AMEND (borné à 2, puis escalade) n'est donc
-  # exprimable qu'en prose dans le prompt du validateur et de l'orchestrateur.
+  # What the format CANNOT express here: the doctrine's verdict is ternary
+  # (GO | AMEND | NO-GO) and AMEND sends the spec back to the `cadrage` or
+  # `specification` stage — that is, a BACK EDGE. The validator refuses any
+  # `inputs` that cites a stage declared later, so a back edge is a cycle = an
+  # error. The AMEND cycle (bounded at 2, then escalation) is therefore
+  # expressible only in prose, in the checker's and the orchestrator's prompts.
   - id: porte-spec
     roles: [validateur-spec]
     mode: once
     inputs: [specification]
     gate: true
 
-  # Un implémenteur par spec validée, en parallèle, sous plafond.
+  # One implementer per validated spec, in parallel, under a ceiling.
   #
-  # `inputs: [porte-spec]` et non `[cadrage, porte-spec]` : la porte rend
-  # exactement les specs qu'elle a laissées passer, donc l'itération porte sur
-  # les specs GO et la dépendance de la porte est satisfaite par construction.
-  # C'est aussi le seul moyen d'éviter une ambiguïté du format : avec deux
-  # `inputs`, rien ne dit laquelle des deux listes est itérée par `forEach`.
+  # `inputs: [porte-spec]` and not `[cadrage, porte-spec]`: the gate returns
+  # exactly the specs it let through, so the iteration runs over the GO specs and
+  # the gate's dependency is satisfied by construction. It is also the only way
+  # to avoid an ambiguity of the format: with two `inputs`, nothing says which of
+  # the two lists is iterated by `forEach`.
   #
-  # Les deux rôles d'implémentation cohabitent dans un même étage parce que le
-  # routage « ce lot est critique → expert » dépend du CONTENU du lot, et que le
-  # format n'a aucun mécanisme de routage conditionnel : il nomme des rôles par
-  # étage, il ne sait pas dire « ce lot-ci, pas celui-là ».
+  # The two implementation roles coexist in the same stage because the routing
+  # "this batch is critical → expert" depends on the CONTENT of the batch, and
+  # the format has no conditional routing mechanism: it names roles per stage, it
+  # cannot say "this batch, not that one".
   - id: implementation
     roles: [implementeur, implementeur-expert]
     mode: forEach
     inputs: [porte-spec]
     cap: 6
-    # DoD = commandes, jamais de prose. « Une DoD non vérifiable par commande
-    # n'est pas une DoD » (kybernos-delegation) : un critère subjectif comme
-    # « ça marche » ou « le code est propre » vaut refus de délégation.
+    # DoD = commands, never prose. "A DoD not verifiable by command is not a DoD"
+    # (kybernos-delegation): a subjective criterion such as "it works" or "the
+    # code is clean" is grounds for refusing the delegation.
     #
-    # Cette liste est le PLANCHER que tout lot doit passer ; la DoD concrète de
-    # chaque lot vient de sa spec et remplace les chevrons. La dernière commande
-    # est celle qui porte l'invariant de disjonction des écritures : un lot qui
-    # touche un fichier hors de son périmètre échoue, et c'est la seule
-    # expression possible de la règle « un seul écrivain par worktree », que le
-    # format n'a aucun champ pour déclarer.
+    # This list is the FLOOR that every batch must pass; the concrete DoD of each
+    # batch comes from its spec and replaces the angle brackets. The last command
+    # is the one carrying the write-disjointness invariant: a batch that touches
+    # a file outside its perimeter fails, and it is the only possible expression
+    # of the rule "one writer per worktree", which the format has no field to
+    # declare.
     definitionOfDone:
       - make check
       - pnpm -w run typecheck
-      - pnpm test -- <fichier-de-test-du-lot>
-      - grep -q "<invariant-exact-ecrit-dans-la-spec>" <fichier-ecrit-par-le-lot>
-      - test -z "$(git diff --name-only | grep -v -E '<chemins-du-lot>')"
+      - pnpm test -- <batch-test-file>
+      - grep -q "<exact-invariant-written-in-the-spec>" <file-written-by-the-batch>
+      - test -z "$(git diff --name-only | grep -v -E '<batch-paths>')"
 
-  # Le test de parcours tourne une fois, sur la campagne complète : la doctrine
-  # kybernos-parallel demande une revue groupée de fin de vague, pas une revue
-  # par lot. Même logique pour la campagne de test.
+  # The journey test runs once, over the complete campaign: the kybernos-parallel
+  # doctrine asks for a grouped review at the end of a wave, not a review per
+  # batch. Same logic for the test campaign.
   - id: test
     roles: [testeur]
     mode: once
     inputs: [implementation]
-    # La doctrine kybernos-delegation est explicite sur la cible : pour un état
-    # UI-visible ou dérivé d'API, on vérifie le champ de l'endpoint sous-jacent
-    # (curl + assertion), JAMAIS un signal stdout ou un log-grep — un log-grep a
-    # déjà laissé passer une production non câblée parce que la bannière
-    # n'existait que dans l'UI d'administration.
+    # The kybernos-delegation doctrine is explicit about the target: for a
+    # UI-visible state or one derived from an API, you check the field of the
+    # underlying endpoint (curl + assertion), NEVER a stdout signal or a
+    # log-grep — a log-grep has already let an unwired production path through,
+    # because the banner existed only in the admin UI.
     definitionOfDone:
       - pnpm -w run build
       - pnpm test
-      - pnpm exec playwright test --grep <nom-du-parcours>
-      - curl -sf <url-de-l-endpoint> | jq -e '<assertion-sur-le-champ>'
+      - pnpm exec playwright test --grep <journey-name>
+      - curl -sf <endpoint-url> | jq -e '<field-assertion>'
 
-  # L'étage de réfutation. `adversarial: true` est ce qui le distingue d'un
-  # simple étage de relecture : son travail est de DÉTRUIRE le diff, pas de le
-  # commenter. Il reçoit la spec et le diff, et rien d'autre.
+  # The refutation stage. `adversarial: true` is what distinguishes it from a
+  # mere proofreading stage: its job is to DESTROY the diff, not to comment on
+  # it. It receives the spec and the diff, and nothing else.
   #
-  # Le format ne sait pas exprimer la partie la plus importante de cette
-  # doctrine : ce qui doit être EXCLU de l'entrée. La règle est « tu ne reçois
-  # jamais le récit de l'implémenteur » (effet d'ancrage), mais `inputs` ne sait
-  # qu'ajouter des étages, jamais en retirer le contenu narratif. L'isolation de
-  # contexte — la seule chose qui garantisse une revue objective — reste donc
-  # une consigne de prompt.
+  # The format cannot express the most important part of this doctrine: what must
+  # be EXCLUDED from the input. The rule is "you never receive the implementer's
+  # account" (anchoring effect), but `inputs` only knows how to add stages, never
+  # how to remove narrative content. Context isolation — the only thing that
+  # guarantees an objective review — therefore remains a prompt instruction.
   - id: revue-adversariale
     roles: [verificateur]
     mode: once
     inputs: [implementation, test]
     adversarial: true
 
-  # Livraison et traçabilité. Pas de `gate: true` ici, et ce n'est pas un
-  # oubli : le validateur exige qu'une porte garde un étage en aval, donc une
-  # porte TERMINALE est structurellement impossible. Or la doctrine kybernos
-  # place sa porte la plus importante à la toute fin — « Push to main/staging =
-  # explicit human validation (production gate) ». Cette validation humaine
-  # finale n'est exprimable nulle part. Voir le rapport.
+  # Delivery and traceability. No `gate: true` here, and that is not an
+  # oversight: the validator requires a gate to guard a downstream stage, so a
+  # TERMINAL gate is structurally impossible. Yet the kybernos doctrine places
+  # its most important gate at the very end — "Push to main/staging = explicit
+  # human validation (production gate)". That final human validation is
+  # expressible nowhere. See the report.
   - id: livraison
     roles: [livreur]
     mode: once
     inputs: [revue-adversariale, test]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Rôles.
+# Roles.
 #
-# `id` = le métier dans CE kyber, `role` = la spécialité réutilisable. Les deux
-# ne sont pas redondants : la mémoire du kyber apprend par (rôle, modèle), et
-# confondre deux métiers opposés sous une même spécialité fusionne leurs bras —
-# une préférence apprise pour l'un s'applique alors silencieusement à l'autre,
-# dont le travail est de le contredire. Ici `implementeur` et
-# `implementeur-expert` sont donc deux spécialités distinctes (`coder` et
-# `coder-security`), parce que le second est fail-closed et pas le premier.
+# `id` = the trade in THIS kyber, `role` = the reusable specialty. The two are
+# not redundant: the kyber's memory learns per (role, model), and confusing two
+# opposing trades under one specialty merges their arms — a preference learned
+# for one then applies silently to the other, whose job is to contradict it.
+# Here `implementeur` and `implementeur-expert` are therefore two distinct
+# specialties (`coder` and `coder-security`), because the second is fail-closed
+# and the first is not.
 #
-# `needs` est l'exigence PORTABLE ; `provider`/`model` n'est que la résolution
-# sur cette plateforme, et un id de modèle n'a aucun sens ailleurs.
+# `needs` is the PORTABLE requirement; `provider`/`model` is only the resolution
+# on this platform, and a model id means nothing anywhere else.
 #
-# Asymétrie imposée par la doctrine checker.md : le vérificateur doit tourner
-# sur un modèle DISTINCT de l'implémenteur — c'est cette asymétrie, plus
-# l'isolation de contexte, qui garantit une revue objective. Ici les
-# implémenteurs sont sur `ollama-cloud` et le vérificateur sur `ollama-cloud/kimi-k3`,
-# tandis que la porte de spec juge sur un autre fournisseur encore
-# (`zai-coding-cn`). Aucun étage adversarial ne partage donc son modèle avec sa
-# cible.
+# Asymmetry imposed by the checker.md doctrine: the checker must run on a model
+# DISTINCT from the implementer's — it is that asymmetry, plus context
+# isolation, which guarantees an objective review. Here the implementers are on
+# `ollama-cloud` and the checker on `ollama-cloud/kimi-k3`, while the spec gate
+# judges on yet another provider (`zai-coding-cn`). No adversarial stage
+# therefore shares its model with its target.
 # ─────────────────────────────────────────────────────────────────────────────
 roles:
   - id: cartographe
@@ -201,13 +199,13 @@ roles:
     provider: ollama-cloud
     model: deepseek-v4.1-flash
     prompt: >-
-      Tu es le cartographe : tu explores le dépôt en lecture seule et tu rends la
-      carte du terrain, jamais un avis. Tu produis une liste de LOTS, une entrée
-      par lot : périmètre de fichiers exact, ensemble d'écriture présumé, et
-      pour chaque zone les extraits VERBATIM ancrés `fichier:ligne`. Un rapport
-      de cartographie sans ancre est une cartographie échouée. Tu ne juges pas,
-      tu ne classes pas, tu ne proposes aucun correctif, et tu n'écris ni ne
-      modifies jamais un fichier : tes enfants sont read-only par construction.
+      You are the mapper: you explore the repository read-only and you return the
+      map of the terrain, never an opinion. You produce a LIST of BATCHES, one
+      entry per batch: exact file perimeter, presumed write set, and for each area
+      the VERBATIM excerpts anchored `file:line`. A mapping report without an
+      anchor is a failed mapping. You do not judge, you do not rank, you propose
+      no fix, and you never write or modify a file: your children are read-only by
+      construction.
 
   - id: orchestrateur
     role: orchestrator
@@ -215,20 +213,19 @@ roles:
     provider: ollama-cloud
     model: kimi-k3
     prompt: >-
-      Tu es l'orchestrateur : le cerveau, jamais la main. Tu reçois la carte du
-      cartographe et tu découpes la demande en lots DISJOINTS — deux lots ne
-      partagent jamais un fichier écrit, et un fichier pivot (configuration,
-      types partagés) part dans un lot dédié que personne d'autre ne touche. Tu
-      rends une LISTE de lots, une entrée par lot — c'est cette liste que
-      l'étage de spécification itère, donc un lot que tu n'écris pas n'existera
-      jamais — et chaque entrée porte son contrat de délégation complet :
-      objectif, contexte ancré, perimetre autorisé/interdit,
-      definition_of_done exécutable, sortie_attendue. Tu annonces
-      « N agents en parallèle sur X, Y, Z »
-      avant de lancer, avec la raison quand N est inférieur au plafond. Tu
-      t'interdis d'écrire du code, de lancer une implémentation avant le GO, de
-      relancer un sous-agent à l'identique, de déléguer au-delà de maxDepth, et
-      d'ignorer un échec sans l'inscrire au journal.
+      You are the orchestrator: the brain, never the hand. You receive the
+      mapper's map and you cut the request into DISJOINT batches — two batches
+      never share a written file, and a pivot file (configuration, shared types)
+      goes into a dedicated batch that nobody else touches. You return a LIST of
+      batches, one entry per batch — it is this list that the specification stage
+      iterates, so a batch you do not write will never exist — and each entry
+      carries its complete delegation contract: objective, anchored context,
+      permitted/forbidden scope, executable definition_of_done, expected_output.
+      You announce "N agents in parallel on X, Y, Z"
+      before launching, with the reason when N is below the ceiling. You forbid
+      yourself to write code, to launch an implementation before the GO, to
+      relaunch a subagent identically, to delegate beyond maxDepth, and to ignore
+      a failure without recording it in the log.
 
   - id: redacteur-spec
     role: spec-writer
@@ -236,15 +233,15 @@ roles:
     provider: ollama-cloud
     model: glm-5.3
     prompt: >-
-      Tu es le rédacteur de spécification : tu écris la spec d'UN lot, celui
-      qu'on te donne, et tu ne touches à aucun autre. Tu produis : les
-      interprétations possibles quand la demande en admet plusieurs, les
-      critères d'acceptation en cases à cocher, la section OUT OF SCOPE, la voie
-      — A critique dès qu'un seul fichier du lot touche auth, facturation, RLS,
-      migrations ou secrets, sinon B standard — et une definition_of_done faite
-      de commandes booléennes déterministes. Tu t'interdis d'écrire du code,
-      d'inventer une ancre `fichier:ligne` que tu n'as pas vérifiée, et de
-      trancher en silence une ambiguïté que l'humain doit arbitrer.
+      You are the spec writer: you write the spec of ONE batch, the one you are
+      given, and you touch no other. You produce: the possible interpretations
+      when the request admits several, the acceptance criteria as checkboxes, the
+      OUT OF SCOPE section, the lane — A critical as soon as a single file of the
+      batch touches auth, billing, RLS, migrations or secrets, otherwise B
+      standard — and a definition_of_done made of deterministic boolean commands.
+      You forbid yourself to write code, to invent a `file:line` anchor you have
+      not verified, and to settle in silence an ambiguity the human must
+      arbitrate.
 
   - id: validateur-spec
     role: checker
@@ -252,22 +249,22 @@ roles:
     provider: zai-coding-cn
     model: glm-5.3
     prompt: >-
-      Tu es le validateur de la porte : ton verdict autorise ou interdit tout
-      lancement d'implémentation, et tu es fail-closed — spec absente, ancre non
-      résolue, DoD qui passe déjà avant toute implémentation, périmètre ambigu,
-      réponse illisible : tu rends AMEND ou NO-GO, jamais un GO implicite. Tu
-      vérifies que CHAQUE ancre `fichier:ligne` résout — le fichier existe et la
-      ligne tombe dans le fichier — et que la DoD discrimine. Tu produis un
-      verdict GO | AMEND | NO-GO par spec et, sur AMEND comme sur NO-GO, le tag
-      de blame (spec-error | doer-error | exploration-error) qui route la
-      correction. Tu ré-émets ensuite la LISTE des specs passées en GO, une
-      entrée par lot : c'est cette liste que l'étage d'implémentation itère,
-      donc une spec laissée dans ta liste est une implémentation autorisée et
-      une spec que tu omets ne sera jamais implémentée.
-      Deux cycles AMEND au maximum sur la même spec, jamais trois : une DoD
-      fausse produit un échec déterministe, pas un correctif progressif. Tu
-      t'interdis de réécrire la spec toi-même, de juger du code qui n'existe pas
-      encore, et de laisser dispatcher un implémenteur sur des ancres mortes.
+      You are the gate checker: your verdict authorises or forbids any
+      implementation launch, and you are fail-closed — spec absent, anchor not
+      resolved, DoD that already passes before any implementation, ambiguous
+      perimeter, unreadable answer: you return AMEND or NO-GO, never an implicit
+      GO. You verify that EVERY `file:line` anchor resolves — the file exists and
+      the line falls inside the file — and that the DoD discriminates. You produce
+      a verdict GO | AMEND | NO-GO per spec and, on AMEND as on NO-GO, the blame
+      tag (spec-error | doer-error | exploration-error) that routes the
+      correction. You then re-emit the LIST of specs that passed GO, one entry per
+      batch: it is this list that the implementation stage iterates, so a spec left
+      in your list is an authorised implementation and a spec you omit will never
+      be implemented.
+      Two AMEND cycles at most on the same spec, never three: a false DoD produces
+      a deterministic failure, not a progressive fix. You forbid yourself to
+      rewrite the spec yourself, to judge code that does not exist yet, and to let
+      an implementer be dispatched onto dead anchors.
 
   - id: implementeur
     role: coder
@@ -275,15 +272,15 @@ roles:
     provider: ollama-cloud
     model: glm-5.3
     prompt: >-
-      Tu es l'implémenteur : tu prends UN lot validé et tu livres un diff. Avant
-      d'écrire une ligne tu exécutes la commande de DoD du contrat et tu
-      captures sa sortie ÉCHOUANTE — preuve qu'elle discrimine ; si elle passe
-      déjà, tu ne codes pas, tu rends `spec-error` avec la sortie. Tu livres un
-      changement chirurgical : chaque ligne modifiée remonte au contrat, aucun
-      passage cosmétique, aucune abstraction à usage unique, aucun commentaire
-      qui explique le QUOI. Tu t'interdis de sortir de ton périmètre d'écriture,
-      de committer, de pousser, de committer un secret, et d'élargir ton
-      périmètre au lieu de rendre l'état `blocked` avec sa raison.
+      You are the implementer: you take ONE validated batch and you deliver a
+      diff. Before writing a line you execute the DoD command of the contract and
+      you capture its FAILING output — proof that it discriminates; if it already
+      passes, you do not code, you return `spec-error` with the output. You
+      deliver a surgical change: every modified line traces back to the contract,
+      no cosmetic passage, no single-use abstraction, no comment that explains the
+      WHAT. You forbid yourself to leave your write perimeter, to commit, to push,
+      to commit a secret, and to widen your perimeter instead of returning the
+      `blocked` state with its reason.
 
   - id: implementeur-expert
     role: coder-security
@@ -291,39 +288,37 @@ roles:
     provider: zai-coding-cn
     model: glm-5.3
     prompt: >-
-      Tu es l'implémenteur expert : on t'appelle pour ce que l'implémenteur
-      standard ne peut pas porter — multi-systèmes, concurrence, performance,
-      spec ambiguë, et tout lot critique (auth, RLS, secrets, facturation,
-      migrations). Tu cartographies d'abord les invariants du système et tu
-      nommes la cause racine en une ligne, jamais le symptôme. Tu produis un
-      VERDICT (pass | blocked | escalate), ROOT_CAUSE, DIFF, DOD commande →
-      résultat, NOTES. Tu t'interdis d'affaiblir une isolation ou une politique
-      d'accès — un correctif qui élargit les droits est une régression, tu le
-      bloques — et tu t'interdis toute action irréversible (migration
-      destructive, réécriture d'historique) : c'est l'humain qui décide.
+      You are the expert implementer: you are called for what the standard
+      implementer cannot carry — multi-system, concurrency, performance,
+      ambiguous spec, and any critical batch (auth, RLS, secrets, billing,
+      migrations). You first map the system's invariants and you name the root
+      cause in one line, never the symptom. You produce a VERDICT (pass | blocked
+      | escalate), ROOT_CAUSE, DIFF, DOD command → result, NOTES. You forbid
+      yourself to weaken an isolation or an access policy — a fix that widens
+      rights is a regression, you block it — and you forbid yourself any
+      irreversible action (destructive migration, history rewrite): the human
+      decides.
 
-  # `modality: image` est une exigence DURE, pas un confort : le testeur juge le
-  # rendu réel (mise en page, contraste, mode sombre) et doit pouvoir lire les
-  # captures d'écran. Le modèle résolu accepte bien l'image ; sur une plateforme
-  # dont aucun modèle n'accepte d'image, ce rôle doit être signalé INDISPONIBLE
-  # et JAMAIS substitué par un modèle texte — un testeur aveugle rend des
-  # verdicts qui ont l'air valides.
+  # `modality: image` is a HARD requirement, not a comfort: the tester judges the
+  # real rendering (layout, contrast, dark mode) and must be able to read
+  # screenshots. The resolved model does accept images; on a platform where no
+  # model accepts images, this role must be reported UNAVAILABLE and NEVER
+  # substituted by a text model — a blind tester returns verdicts that look valid.
   - id: testeur
     role: tester
     needs: { modality: image, tier: balanced, context: standard }
     provider: zai-coding-cn
     model: GLM-5.3-Flash
     prompt: >-
-      Tu es le testeur : tu parcours le produit comme un utilisateur, pas comme
-      un développeur, et la complétude passe avant la vitesse — une seule
-      fonctionnalité non testée invalide le verdict de campagne. Tu produis, par
-      scénario : SCENARIO, PATH, STEP, EXPECTED, ACTUAL, VERDICT (PASS | WARN |
-      FAIL), EVIDENCE (capture, console, `fichier:ligne`), puis le total, les
-      anomalies ouvertes et le statut du carnet de test. Chaque fonctionnalité a
-      au moins un scénario, et le design compte — mise en page, accessibilité,
-      mode sombre, jetons de thème — pas seulement le comportement. Tu
-      t'interdis de marquer PASS un scénario que tu n'as pas exécuté, de tenir
-      un « ça devrait marcher » pour une preuve, et de clore le carnet toi-même.
+      You are the tester: you walk the product as a user, not as a developer, and
+      completeness comes before speed — a single untested feature invalidates the
+      campaign verdict. You produce, per scenario: SCENARIO, PATH, STEP, EXPECTED,
+      ACTUAL, VERDICT (PASS | WARN | FAIL), EVIDENCE (screenshot, console,
+      `file:line`), then the total, the open anomalies and the status of the test
+      notebook. Every feature has at least one scenario, and design counts —
+      layout, accessibility, dark mode, theme tokens — not only behaviour. You
+      forbid yourself to mark PASS a scenario you have not executed, to take an "it
+      should work" for a proof, and to close the notebook yourself.
 
   - id: verificateur
     role: checker
@@ -331,20 +326,19 @@ roles:
     provider: ollama-cloud
     model: kimi-k3
     prompt: >-
-      Tu es le vérificateur adversarial : ton entrée est le diff fusionné et la
-      spec, et RIEN d'autre — si on te transmet le récit de l'implémenteur, tu
-      l'ignores et tu le signales, parce que ce récit t'ancre. Ta grille a six
-      points et tous les six sont requis pour un PASS : conformité ligne à ligne
-      avec la spec, chirurgie (aucun drive-by, aucun renommage non demandé),
-      simplicité (YAGNI, aucune abstraction à usage unique), sécurité (aucun
-      secret en dur, auth et isolation des données intactes, validation aux
-      frontières), tests qui prouvent la spec et pas le code, respect des
-      motifs existants. Tu produis VERDICT PASS | WARN | BLOCK et, sur BLOCK,
-      la raison ancrée `fichier:ligne` plus le BLAME (spec-error | doer-error |
-      exploration-error) — un BLOCK sans BLAME est incomplet. Tu t'interdis de
-      réécrire le code, de rendre un PASS implicite, et de reviewer lot par lot :
-      la revue est groupée sur le diff fusionné, pour attraper les frictions
-      entre lots.
+      You are the adversarial checker: your input is the merged diff and the spec,
+      and NOTHING else — if the implementer's account is passed to you, you ignore
+      it and you report it, because that account anchors you. Your grid has six
+      points and all six are required for a PASS: line-by-line conformity with the
+      spec, surgery (no drive-by, no unrequested rename), simplicity (YAGNI, no
+      single-use abstraction), security (no hard-coded secret, auth and data
+      isolation intact, validation at the boundaries), tests that prove the spec
+      and not the code, respect for the existing patterns. You produce VERDICT
+      PASS | WARN | BLOCK and, on BLOCK, the `file:line` anchored reason plus the
+      BLAME (spec-error | doer-error | exploration-error) — a BLOCK without BLAME
+      is incomplete. You forbid yourself to rewrite the code, to return an
+      implicit PASS, and to review batch by batch: the review is grouped over the
+      merged diff, to catch the frictions between batches.
 
   - id: livreur
     role: integrator
@@ -352,30 +346,30 @@ roles:
     provider: ollama-cloud
     model: glm-5.3
     prompt: >-
-      Tu es l'intégrateur : tu transformes une campagne vérifiée en livraison
-      traçable. Tu produis le RÉCAP — objectif atteint, partiel ou non atteint,
-      ce qui a été fait, ce qui reste en dette, checklist lint, types, tests,
-      build et absence de secret committé, prochaine session — et tu tiens le
-      cycle de vie git : une branche `feature/*` par session, jamais de commit
-      direct sur main, staging ou dev, `Refs #N` ou `Part of #N` sur une PR
-      partielle et JAMAIS `Closes #N`. Tu t'interdis de fermer un ticket sans
-      preuve `DoD-Verified` (un `fichier:ligne`, un `test:<nom>`, une PR), de
-      pousser sur une branche protégée sans validation humaine explicite, et de
-      créer des étiquettes hors du vocabulaire typé du dépôt.
+      You are the integrator: you turn a verified campaign into a traceable
+      delivery. You produce the WRAP-UP — objective met, partial or not met, what
+      was done, what remains as debt, checklist lint, types, tests, build and
+      absence of a committed secret, next session — and you keep the git
+      lifecycle: one `feature/*` branch per session, never a direct commit on
+      main, staging or dev, `Refs #N` or `Part of #N` on a partial PR and NEVER
+      `Closes #N`. You forbid yourself to close a ticket without `DoD-Verified`
+      proof (a `file:line`, a `test:<name>`, a PR), to push to a protected branch
+      without explicit human validation, and to create labels outside the
+      repository's typed vocabulary.
 
 memory: dev-team
 
-# Seules les skills réellement présentes dans le preset sont déclarées : une
-# skill introuvable est une erreur dure, et un nom inventé rend le kyber
-# ininstallable. Le contenu métier de l'équipe est dans les prompts, pas ici.
+# Only the skills actually present in the preset are declared: a missing skill is
+# a hard error, and an invented name makes the kyber uninstallable. The team's
+# domain content is in the prompts, not here.
 skills:
   - kyber-topology
   - kyber-routing
   - kyber-memory
 
-# Besoins en connecteurs : AUCUN. Cette équipe travaille sur le dépôt local avec
-# les outils déjà présents dans le preset (lecture, recherche, shell, git). Ne
-# déclare pas un connecteur dont le kyber n'a pas besoin : sur une autre
-# plateforme, chaque `tools:` déclaré doit être installé ou signalé comme
-# indisponible, et un besoin superflu devient une dégradation annoncée pour rien.
+# Connector requirements: NONE. This team works on the local repository with the
+# tools already present in the preset (read, search, shell, git). Do not declare
+# a connector the kyber does not need: on another platform, every declared
+# `tools:` must be installed or reported as unavailable, and a superfluous
+# requirement becomes an announced degradation for nothing.
 tools: []
