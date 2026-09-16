@@ -1,0 +1,318 @@
+# veille — équipe de veille : surveiller un domaine, détecter ce qui change, et
+# produire une synthèse écrite qui distingue le signal du bruit.
+#
+# Ce kyber est la transposition du gabarit de domaine `market-watch`
+# (kybernos/core/templates/kyber-domains/market-watch.md) : recopié, jamais lié,
+# traduit en français et condensé. Sa dérivation n'est enregistrée nulle part
+# ailleurs, et c'est un manque à signaler : `provenance` est réservée à
+# l'installateur (« Renseignée par l'installateur, jamais par l'auteur »,
+# lint.cjs), et `sourcePath` désigne le dossier d'origine d'un kyber installé,
+# pas la doctrine dont il dérive. D'où ce commentaire, qui n'est lisible que par
+# un humain.
+
+id: veille
+specVersion: 2
+
+mission: >-
+  Surveiller un corpus de sources confirmées par l'humain, détecter ce qui a
+  matériellement changé, puis produire un livrable écrit qui sépare le signal du
+  bruit, cite chaque affirmation et nomme ce qu'il a écarté. N'interroge pas le
+  marché à la place du commanditaire, ne collecte rien avant de l'avoir
+  interrogé, et ne rend jamais une synthèse sans source datée.
+
+# ÉLUCIDATION — le champ le plus important de ce kyber.
+#
+# Le gabarit market-watch s'ouvre sur une interdiction, en majuscules :
+#   « HARD MANDATE: before composing any team, roles, or tools, interrogate the
+#     user. Never compose on assumptions — every choice below must trace to an
+#     explicit answer. »
+# Dix questions suivent, et l'équipe n'est composée qu'APRÈS. `elucidation:
+# required` porte exactement cette exigence : l'orchestrateur DOIT interroger
+# l'humain avant de composer l'équipe (CHANGELOG, SPEC-VERSION 2). Le passer à
+# `none` viderait ce kyber de sa doctrine — une veille composée sur des
+# hypothèses surveille les mauvaises sources, à la mauvaise cadence, et rend un
+# digest que personne n'attendait.
+#
+# Ce que ce champ NE porte PAS, et qu'il a donc fallu mettre ailleurs :
+#   - les DIX QUESTIONS : aucun champ du format ne les accueille. Elles vivent
+#     dans le prompt du rôle `cadreur`, seul endroit exécutable.
+#   - OÙ VONT LES RÉPONSES : aucun champ ne le dit. J'ai dû inventer un contrat
+#     de fichier ($RUN/cadrage.md) et le rendre vérifiable par la
+#     `definitionOfDone` de l'étage `cadrage`.
+#   - l'ORDRE « pas de collecte avant l'interview » : `gate: true` ne garde que
+#     l'aval de son propre étage et exige des `inputs`, donc il ne peut pas être
+#     posé sur l'étage d'entrée. Voir le commentaire de l'étage `tri`.
+elucidation: required
+
+# Garde de récursion : 1. Un collecteur qui se re-délègue à un sous-collecteur
+# rend l'imputation d'un échec impossible — on ne sait plus quel agent a lu quoi.
+maxDepth: 1
+
+# FORME : mapreduce, et pas pipeline.
+# Une veille est le balayage PARALLÈLE d'une LISTE de sources — la watchlist que
+# le cadrage produit — suivi d'une réduction : N bulletins → un tri → un
+# livrable. C'est la définition même de `mapreduce` dans `kyber-topology`
+# (« itération sur une liste produite en amont »). `pipeline` serait malhonnête :
+# il décrit des étages un-à-un et ne dit rien du fan-out sur N sources, qui est
+# le cœur du travail. Le nombre de collecteurs n'est pas connu à l'écriture de ce
+# fichier — il dépend des réponses de l'humain — et c'est précisément pourquoi
+# `mode: forEach` et `cap:` existent.
+topology: mapreduce
+
+stages:
+  # ÉTAGE 0 — l'interview. Il tourne AVANT tout le reste et n'a pas d'`inputs` :
+  # en mapreduce, c'est lui qui produit la liste que l'étage suivant itère. Sans
+  # lui, `collecte` n'a rien à parcourir — la dépendance est réelle.
+  - id: cadrage
+    roles: [cadreur]
+    mode: once
+    # Cette DoD est ce qui rend l'élucidation VÉRIFIABLE. `elucidation: required`
+    # dit qu'il faut interroger ; ces commandes prouvent que l'interview a eu
+    # lieu et que ses réponses sont écrites quelque part.
+    # Contrat de fichier, faute de champ pour le déclarer :
+    #   $RUN/cadrage.md — une ligne « Q<n>: <question> » par question posée, une
+    #   ligne « R<n>: <réponse> » par réponse REÇUE (la réponse de l'humain, pas
+    #   une hypothèse de l'agent), puis « SOURCE: <url> » par source confirmée et
+    #   « NIVEAU-ALERTE: <ce qui déclenche une alerte> ».
+    # L'orchestrateur exporte RUN — ex. RUN=veille/runs/2026-09-16T19-30Z.
+    definitionOfDone:
+      - >-
+        test -s "$RUN/cadrage.md"
+      - >-
+        test "$(grep -cE '^R[0-9]+: .' "$RUN/cadrage.md")" -ge 10
+      - >-
+        test "$(grep -cE '^SOURCE: ' "$RUN/cadrage.md")" -ge 1
+      - >-
+        test "$(grep -cE '^NIVEAU-ALERTE: ' "$RUN/cadrage.md")" -ge 1
+
+  # ÉTAGE 1 — le balayage : `forEach` sur la watchlist confirmée, plafonné.
+  - id: collecte
+    roles: [collecteur-officiel, collecteur-signal-faible]
+    mode: forEach
+    inputs: [cadrage]
+    # Plafond de 6 agents simultanés : c'est le cap dur de la doctrine
+    # d'orchestration (CHANGELOG, SPEC-VERSION 2 : « Repris du cap dur à 6 »).
+    # Sans `cap`, rien ne borne le parallélisme : 40 sources confirmées
+    # lanceraient 40 agents, pour un domaine qu'aucune veille ne demande à
+    # couvrir d'un coup.
+    cap: 6
+    # Les deux collecteurs partagent CET étage, et ce n'est pas un raccourci : un
+    # même `id` de rôle ne peut être atteint que par un seul étage (lint.cjs), et
+    # les deux font le même travail — balayer une source — sur deux familles de
+    # sources. L'orchestrateur route chaque source vers celui dont la famille
+    # correspond. Leurs `id` diffèrent parce que la clé d'apprentissage de
+    # kyber-memory est (kyber, id, provider, model) : deux métiers, deux bras.
+    definitionOfDone:
+      # « Une source a-t-elle été réellement consultée ? » La seule réponse
+      # acceptable est un reçu de collecte, pas une phrase. Contrat, un couple de
+      # fichiers par source balayée :
+      #   $RUN/collecte/<source-id>.json   bulletin de faits datés + citations[]
+      #   $RUN/collecte/<source-id>.fetch  reçu, 1re ligne :
+      #     <code HTTP> <sha256 du corps> <horodatage ISO-8601> <URL appelée>
+      - >-
+        test -n "$(ls -1 $RUN/collecte/*.json 2>/dev/null)"
+      - >-
+        test "$(ls -1 $RUN/collecte/*.json 2>/dev/null | wc -l)" -eq "$(ls -1 $RUN/collecte/*.fetch 2>/dev/null | wc -l)"
+      # Chaque reçu atteste un HTTP 200. Une source injoignable se SIGNALE et
+      # fait échouer la DoD : elle ne se remplace pas par un souvenir du modèle.
+      - >-
+        test "$(grep -lE '^200 ' $RUN/collecte/*.fetch 2>/dev/null | wc -l)" -eq "$(ls -1 $RUN/collecte/*.fetch 2>/dev/null | wc -l)"
+      # Chaque bulletin porte au moins une citation : un bulletin sans citation
+      # est un résumé de mémoire, pas une collecte.
+      - >-
+        test "$(grep -l citations $RUN/collecte/*.json 2>/dev/null | wc -l)" -eq "$(ls -1 $RUN/collecte/*.json 2>/dev/null | wc -l)"
+      # Aucune source de la watchlist n'a été sautée en silence : autant de
+      # bulletins que de « SOURCE: » confirmées à l'étage de cadrage.
+      - >-
+        test "$(ls -1 $RUN/collecte/*.json 2>/dev/null | wc -l)" -eq "$(grep -cE '^SOURCE: ' $RUN/cadrage.md)"
+
+  # ÉTAGE 2 — le tri. Seule réduction de la veille : N bulletins → une liste
+  # classée. C'est ici que le signal se sépare du bruit, et le dernier endroit où
+  # jeter du bruit ne coûte pas encore une ligne de livrable.
+  - id: tri
+    roles: [analyste-signal]
+    mode: once
+    inputs: [collecte]
+    # LIMITE DU FORMAT, constatée en écrivant ce fichier : la doctrine dit
+    # « never compose on assumptions », donc la porte logique serait en amont de
+    # la collecte, sur l'étage `cadrage`. C'est impossible — `gate: true` exige
+    # des `inputs`, et un étage d'entrée n'en a pas (lint.cjs : « gate sans
+    # inputs — une porte qui ne valide rien »). La porte est donc posée ici, au
+    # seul endroit où elle garde quelque chose, et « pas de collecte avant
+    # l'interview » n'est portée que par `elucidation: required` — c'est-à-dire
+    # par rien que la machine sache vérifier.
+    gate: true
+    definitionOfDone:
+      # $RUN/tri.jsonl — une ligne JSON par candidat :
+      #   id, source, verdict (signal | a-suivre | bruit), raison, citations
+      - >-
+        test -s "$RUN/tri.jsonl"
+      # Toute ligne porte un verdict : autant de `verdict` que de lignes non
+      # vides. Un candidat non classé est un candidat qui passera en synthèse.
+      - >-
+        test "$(grep -c verdict $RUN/tri.jsonl)" -eq "$(grep -c . $RUN/tri.jsonl)"
+      # Un classement sans raison écrite n'est pas vérifiable : autant de
+      # `raison` que de `verdict`. C'est aussi ce qui empêche de jeter en
+      # silence.
+      - >-
+        test "$(grep -c raison $RUN/tri.jsonl)" -eq "$(grep -c verdict $RUN/tri.jsonl)"
+
+  # ÉTAGE 3 — le livrable. Un FICHIER, pas une réponse de conversation : un
+  # digest qui n'existe que dans le chat ne se relit pas au cycle suivant et ne
+  # se compare pas au précédent (« tracks what changed since last cycle »,
+  # market-watch).
+  - id: synthese
+    roles: [synthetiseur]
+    mode: once
+    inputs: [tri]
+    definitionOfDone:
+      - >-
+        test -s "$RUN/digest.md"
+      # Les trois sections, une fois chacune : le signal d'abord (« the most
+      # actionable signals surfaced first », market-watch), puis ce qui monte,
+      # puis ce qui a été écarté — un livrable qui ne dit pas ce qu'il a jeté ne
+      # prouve pas qu'il a trié.
+      - >-
+        test "$(grep -cE '^## (Signal|A-suivre|Ecarte)$' "$RUN/digest.md")" -eq 3
+      # Chaque affirmation porte sa source : sans citation, ce n'est plus un
+      # livrable de veille, c'est une opinion.
+      - >-
+        test "$(grep -cE '\[source: ' "$RUN/digest.md")" -ge 2
+
+roles:
+  # Le rôle qui interroge et cadre : c'est LUI qui porte l'élucidation. Les dix
+  # questions du gabarit market-watch sont recopiées dans son prompt, faute de
+  # champ pour les accueillir — les condenser davantage reviendrait à perdre la
+  # question 9 (« must-know-now » contre bruit de fond), qui est la définition
+  # même du travail de tri de cette équipe.
+  - id: cadreur
+    role: business-analyst
+    needs: { modality: text, tier: balanced, context: standard }
+    provider: zai-coding-cn
+    model: glm-5.3
+    prompt: >-
+      Tu ES le cadreur d'une veille : avant qu'un seul agent ne collecte, tu
+      interroges l'humain et tu n'écris rien avant sa réponse. Tu poses ces dix
+      questions, et tu attends : 1) quel marché ou secteur, et quelle zone
+      géographique ; 2) quels concurrents surveiller — directs, indirects,
+      aspirants ; 3) quoi savoir d'eux — prix, produit, positionnement,
+      mouvements ; 4) quels signaux clients ou de demande comptent — avis,
+      mentions, tendances de recherche ; 5) quelles sources surveiller — presse,
+      réseaux sociaux, avis, offres d'emploi, brevets ; 6) quelle cadence —
+      quotidienne, hebdomadaire, mensuelle — et qu'est-ce qui déclenche une
+      alerte ; 7) à quelles décisions ce renseignement sert — prix, feuille de
+      route, positionnement ; 8) ce qui est déjà suivi, et où cela vit
+      aujourd'hui ; 9) ce qui est un « à savoir tout de suite » et ce qui est du
+      bruit de fond ; 10) quelle est la mesure du succès — une alerte précoce,
+      une information de prix, ou une vision complète. Tu PRODUIS
+      $RUN/cadrage.md : une ligne « Q<n>: <question> » par question posée, une
+      ligne « R<n>: <réponse> » par réponse reçue, puis « SOURCE: <url> » par
+      source confirmée, la cadence, et « NIVEAU-ALERTE: » pour le seuil
+      must-know-now. Tu t'INTERDIS de composer une équipe, de choisir un outil
+      ou de lancer une collecte avant d'avoir ces réponses ; une question sans
+      réponse reste ouverte et tu le dis — tu ne la remplis jamais par une
+      hypothèse, même plausible.
+
+  # Deux collecteurs, une seule spécialité `scout`, deux `id` : ils font le même
+  # métier sur deux familles de sources, et c'est l'`id` qui porte la clé
+  # d'apprentissage (kyber-memory), pas la spécialité.
+  - id: collecteur-officiel
+    role: scout
+    needs: { modality: text, tier: fast, context: standard }
+    provider: ollama-cloud
+    model: deepseek-v4.1-flash
+    prompt: >-
+      Tu ES le collecteur des sources officielles et structurées : pages de prix,
+      communiqués, dépôts réglementaires, notes de version, offres d'emploi,
+      brevets. Tu reçois UNE source de la watchlist confirmée et tu n'en sors
+      pas : une autre source, c'est un autre agent. Tu PRODUIS
+      $RUN/collecte/<source-id>.json — des faits DATÉS, chacun avec son URL et sa
+      date de publication, plus un tableau citations[] d'extraits textuels exacts
+      — et $RUN/collecte/<source-id>.fetch, dont la première ligne est
+      « <code HTTP> <sha256 du corps téléchargé> <horodatage ISO-8601> <URL
+      appelée> ». Tu t'INTERDIS d'écrire un fait que tu n'as pas lu dans le corps
+      téléchargé : une source injoignable se signale par un reçu absent ou non-200
+      et ne se complète jamais de mémoire, et une page d'accueil reformulée n'est
+      pas un fait.
+
+  - id: collecteur-signal-faible
+    role: scout
+    needs: { modality: text, tier: fast, context: standard }
+    provider: ollama-cloud
+    model: glm-5.3-flash
+    prompt: >-
+      Tu ES le collecteur des signaux faibles : avis clients, forums, réseaux
+      sociaux, notes d'applications, fils d'offres d'emploi, billets de blog
+      d'acteurs secondaires. Tu reçois UNE source de la watchlist confirmée et tu
+      n'en sors pas. Tu PRODUIS le même contrat de fichiers que le collecteur
+      officiel — $RUN/collecte/<source-id>.json (faits datés + citations[]) et
+      $RUN/collecte/<source-id>.fetch (reçu de collecte) — et rien d'autre. Tu
+      t'INTERDIS de compter les mentions sans les lire, de présenter un pic de
+      volume comme un changement, et de conclure une tendance à partir d'un seul
+      témoignage : tu rends des citations datées, la tendance se décide à l'étage
+      de tri, pas chez toi.
+
+  # L'analyste est le tri : il ne collecte rien, il ne rédige rien.
+  - id: analyste-signal
+    role: analyst
+    needs: { modality: text, tier: deep, context: standard }
+    provider: ollama-cloud
+    model: kimi-k3
+    prompt: >-
+      Tu ES l'analyste de signal d'une veille : tu reçois les bulletins de
+      collecte et le cadrage, et tu sépares ce qui compte de ce qui ne compte
+      pas. Un changement matériel est un fait NOUVEAU, daté, qui contredit ou
+      déplace ce que le cadrage dit du marché — un prix qui bouge, un lancement,
+      une levée, un départ, une rupture de stock, un positionnement qui change
+      de cible. Tu PRODUIS $RUN/tri.jsonl, une ligne JSON par candidat : id,
+      source, verdict (signal | a-suivre | bruit), raison, citations. Tu
+      t'INTERDIS de classer sans raison écrite, de promouvoir en signal une
+      reformulation ou un communiqué sans effet, de laisser un candidat non
+      classé, et de jeter en silence : tout ce que tu écartes reste dans le
+      fichier, avec le verdict bruit, pour que le livrable puisse dire ce qui a
+      été rejeté et pourquoi.
+
+  # Le synthétiseur écrit le livrable. Il ne re-trie pas, il ne collecte pas.
+  - id: synthetiseur
+    role: presenter
+    needs: { modality: text, tier: balanced, context: standard }
+    provider: ollama-cloud
+    model: glm-5.3
+    prompt: >-
+      Tu ES le synthétiseur d'une veille : tu écris le livrable, tu ne collectes
+      rien et tu ne reclasses rien — si un verdict te paraît faux, tu le
+      signales, tu ne le corriges pas toi-même. Tu PRODUIS $RUN/digest.md, un
+      fichier — jamais une réponse en conversation — avec exactement trois
+      sections : « ## Signal » (ce qu'il faut savoir maintenant, le plus
+      actionnable en premier), « ## A-suivre » (ce qui monte, sans urgence), et
+      « ## Ecarte » (ce que le tri a rejeté, et pourquoi). Chaque affirmation
+      porte sa citation [source: <id>] et sa date, et tu distingues l'observé de
+      l'inféré. Tu t'INTERDIS d'ajouter un fait absent de tri.jsonl, de noyer le
+      signal sous le volume, et de conclure à la place de l'humain : tu écris ce
+      qui a changé et ce que cela met en question, pas la décision à prendre.
+
+memory: veille
+
+# Le moteur commun, pas des skills métier : le format refuse une skill
+# introuvable, et la seule skill métier naturelle ici — une `veille-sources` qui
+# dirait quelles sources surveiller et à quelle cadence — n'existe pas encore.
+# Elle ne peut pas être déclarée sans un second fichier dans
+# kybers/veille/skills/veille-sources/SKILL.md. En attendant, ce savoir vit dans
+# le prompt du `cadreur`, où il est du langage naturel adressé à un agent outillé,
+# donc relu par personne.
+skills:
+  - kyber-topology
+  - kyber-routing
+  - kyber-memory
+
+# Besoins en connecteurs : AUCUN, et c'est une décision, pas un oubli.
+# Le gabarit market-watch est explicite : « Composio connections, proposed per
+# need — never pre-wired », et le sandbox seul est proposé « ONLY if custom code
+# or scraping is justified ... propose it only once the sources and frequency are
+# confirmed, never before ». Déclarer ici un connecteur presse, social ou
+# messagerie contredirait l'étage 0 : ce sont les réponses de l'humain qui
+# décident quelles sources existent, donc quels connecteurs sont nécessaires.
+# Conséquence à assumer : les collecteurs n'ont, à l'installation, que les outils
+# du preset (lecture, recherche, shell, réseau) — et c'est la DoD de `collecte`
+# qui prouve qu'ils ont réellement atteint une source, pas une déclaration.
+tools: []
