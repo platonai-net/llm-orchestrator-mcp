@@ -43,9 +43,10 @@ The format can express neither *what* to ask nor *where* the answers go, so the 
 invented the contract: ten questions in the `framer` prompt (the only executable place), and
 answers pinned to `$RUN/framing.md` — one `Q<n>:` line per question, one `R<n>:` line per
 answer received, then `SOURCE: <url>` per confirmed source and `ALERT-LEVEL: <what triggers
-an alert>` — checkable in the `framing` DoD. "No collection before the interview" rides on
-`elucidation: required` alone: `gate: true` cannot sit on an entry stage (it requires
-`inputs`), so the gate landed on `triage`.
+an alert>` — checkable in the `framing` DoD. "No collection before the interview" is declared
+as `gate: true` on `framing` itself. An entry stage *may* carry a gate; an earlier revision of
+this kyber said otherwise and cited a `lint.cjs` message that does not exist. The gate is
+declared, but no platform primitive enforces it — it is intent, not a constraint.
 
 ## Install
 

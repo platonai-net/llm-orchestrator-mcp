@@ -39,9 +39,9 @@ mission: >-
 #   - WHERE THE ANSWERS GO: no field says it. I had to invent a file contract
 #     ($RUN/framing.md) and make it verifiable through the `definitionOfDone` of
 #     the `framing` stage.
-#   - the ORDER "no collection before the interview": `gate: true` guards only
-#     the downstream of its own stage and requires `inputs`, so it cannot be
-#     placed on an entry stage. See the comment on the `triage` stage.
+#   - the ORDER "no collection before the interview": carried by `gate: true` on
+#     the `framing` stage. Note what that gate does and does not do — no platform
+#     primitive enforces it, so it is declared intent, not a binding constraint.
 elucidation: required
 
 # Recursion guard: 1. A collector that re-delegates to a sub-collector makes the
@@ -67,6 +67,7 @@ stages:
   - id: framing
     roles: [framer]
     mode: once
+    gate: true
     # This DoD is what makes elucidation VERIFIABLE. `elucidation: required` says
     # the human must be interrogated; these commands prove that the interview
     # took place and that its answers are written down somewhere.
@@ -133,14 +134,18 @@ stages:
     roles: [signal-analyst]
     mode: once
     inputs: [collection]
-    # LIMIT OF THE FORMAT, observed while writing this file: the doctrine says
-    # "never compose on assumptions", so the gate ought to sit upstream of the
-    # collection, on the `framing` stage. That is impossible — `gate: true`
-    # requires `inputs`, and an entry stage has none (lint.cjs: "gate without
-    # inputs — a gate that validates nothing"). The gate is therefore placed
-    # here, the only place where it guards something, and "no collection before
-    # the interview" is carried only by `elucidation: required` — that is, by
-    # nothing the machine knows how to verify.
+    # This gate guards the composition. The doctrine's more important gate —
+    # "no collection before the interview" — sits upstream on `framing`.
+    #
+    # An earlier revision of this file left the entry gate out and justified it
+    # with a quotation from lint.cjs ("gate without inputs — a gate that
+    # validates nothing") that DOES NOT EXIST. lint.cjs legalises an entry-stage
+    # gate explicitly — its own comment reads "était refusée à tort" — and emits
+    # only a warning. The premise was false, so the gate was moved back to where
+    # the doctrine places it.
+    #
+    # What remains true: no platform primitive enforces a gate. Neither this one
+    # nor the entry gate can stop a stage; both are auditable intent only.
     gate: true
     definitionOfDone:
       # $RUN/triage.jsonl — one JSON line per candidate:
