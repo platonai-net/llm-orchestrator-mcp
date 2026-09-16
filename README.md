@@ -102,6 +102,74 @@ export KYBERNOS_MCP_BACKEND=both     # local delegation + hosted tools
 
 **Start local, upgrade hosted**: begin with zero cost using your existing keys (or a local Ollama), then add a Kybernos virtual key later — set `both` and the hosted tools (`kyber_*`, `agent_*`, `prompt_*`, `lesson_*`, `memory_*`, `usage_query`, `skills_list`, `templates_list`, `modules_list`) appear next to the local ones. Nothing else changes; the same server, same client config, one env var.
 
+## Kybers — portable agent teams (`kybers/`)
+
+A **kyber** is a team of specialist agents with a shape: roles, a topology, model
+requirements, and a memory loop. This repo has two forms of the same object:
+
+| Form | Where | Needs |
+|---|---|---|
+| **Hosted** | `kyber_list`, `kyber_get` via the server | a Kybernos key, read-only, frozen contract v1 |
+| **Portable** | [`kybers/`](kybers/) — one `kyber.yml` per team, in this repo | **nothing**: no server, no key, no package, no runtime |
+
+The portable form installs by **pasting a prompt** into any agent that can read
+files — Cursor, Opencode, Claude Code, DSH, or anything else. The agent
+discovers your tool's own architecture by inspecting it, resolves each role's
+model requirements against what you actually have, shows you every prompt in
+full, and asks for confirmation before writing anything.
+
+Four are included, adapted from the Kybernos doctrine:
+
+| Kyber | Shape | What it does |
+|---|---|---|
+| [`dev-team`](kybers/dev-team/kyber.yml) | pipeline, 8 stages | Full software team: map → frame → spec → **gate** → implement → test → **adversarial review** → deliver. Cap of 6 parallel agents, executable definitions of done, no speculative launch before GO. |
+| [`audit`](kybers/audit/kyber.yml) | adversarial, 4 stages | Map → findings (iterated) → **refutation** → report. Findings that survive refutation are kept; the ones that fall go to an appendix instead of disappearing. |
+| [`veille`](kybers/veille/kyber.yml) | mapreduce, 4 stages | **Interviews you first** (10 questions, mandatory), then collects from official sources *and* weak signals, separates signal from noise, writes a dated and cited digest. |
+| [`socratic`](kybers/socratic/kyber.yml) | pipeline, 4 stages | Never gives the answer. Questions, restates, then sets an advocate and a prosecutor against your own thesis. The deliverable is a better-formed thought, not an artifact. |
+
+**Install one** — copy this block into your agent, replacing `dev-team` as needed:
+
+```text
+Install the kyber "dev-team" into my tool.
+
+General spec : https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/INSTALL.md
+               https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/CONVENTION.md
+Kyber source : https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/dev-team/kyber.yml
+               → read INSTALL.md AND CONVENTION.md in full before acting.
+If you cannot read the spec, STOP and say so. Do not guess the format.
+
+Apply INSTALL.md §0 to §5. You must, in this order:
+
+1. Discover MY tool's architecture — where agents, skills, connectors and memory
+   live — BY INSPECTING. No guessing, no relying on memory.
+2. Resolve each role's `needs` against the models I ACTUALLY have, and show me the
+   role → model table.
+3. Show me BEFORE WRITING ANYTHING: every role `prompt:` IN FULL, every skill IN
+   FULL, the resolution table, and the fate of each topology stage.
+4. Get my explicit confirmation. No automatic install.
+5. Write `provenance` with the URL and the COMMIT — never a branch.
+6. Tell me at the end what you installed, and what you DEGRADED.
+```
+
+**Why it shows you every prompt first**: a kyber is not configuration. It is
+natural language addressed to a tooled agent, and it can carry anything.
+[`INSTALL.md`](kybers/INSTALL.md) §0 requires showing all of it before writing
+anything, and refusing outright any content that exfiltrates, executes remotely,
+or bypasses validations.
+
+**Validate before installing**:
+
+```bash
+node kybers/lint.cjs --dir=$PWD/kybers dev-team
+```
+
+**Language note**: `kybers/README.md` is in French, as are `INSTALL.md`,
+`CONVENTION.md` and `INSTALL-PROMPT.md` — the install prompt above is the English
+version of the same thing. The English translation of the full spec is not done
+yet.
+
+**Known limits of the format** are documented in [`kybers/README.md`](kybers/README.md#limites-connues-du-format) — nine of them, including one with no answer at all: **there is no way to stop a run or escalate to a human mid-run.**
+
 Hosted endpoints (all configurable):
 
 ```bash
