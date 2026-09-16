@@ -477,7 +477,13 @@ function lintKyber(id, served, probes) {
          Un kyber réel a dû la taire, et son auteur a refusé d'ajouter un étage
          factice dont le seul rôle serait de la rendre déclarable — ce qui aurait
          été exactement le lancement spéculatif que `gate` existe pour empêcher. */
-      const hasLaterStage = stages.some((o, j) => j > idx && Array.isArray(o && o.inputs) && o.inputs.length);
+      /* « Terminal » = AUCUN étage déclaré après lui. Ma première version testait
+         « aucun étage ultérieur n'a d'inputs non vides », ce qui comptait un étage
+         déclarant `inputs: []` comme inexistant — et laissait donc passer une porte
+         orpheline placée avant lui. Une porte est terminale par sa POSITION, pas
+         par la forme des étages qui la suivent. Vérifié par un cas négatif qui a
+         échoué à échouer. */
+      const hasLaterStage = stages.length > idx + 1;
       if (!downstream && !hasLaterStage) {
         warnings.push(`étage "${sid}" : gate terminal — aucun étage en aval, la porte garde la livraison`);
       } else if (!downstream) {
