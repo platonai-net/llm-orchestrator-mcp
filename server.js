@@ -457,35 +457,35 @@ function localToolSchemas() {
       name: "llm_status",
       description:
         `Détecte automatiquement les LLM disponibles (${known.length} modèles enregistrés actuellement : clés API de l'environnement, listing /models de chaque fournisseur, LLM_ORCH_MODELS, models.local.json — y compris Ollama et tout endpoint OpenAI-compatible), teste leur santé, calcule leurs scores et élit le meilleur comme orchestrateur.`,
-      inputSchema: { type: "object", properties: { force: { type: "boolean", description: "Relancer la détection + les tests même si déjà fait" } } },
+      inputSchema: { type: "object", properties: { force: { type: "boolean", description: "Re-run detection and health tests even if already done" } } },
     },
     {
       name: "llm_delegate",
       description:
-        "Délègue une tâche au modèle le plus adapté (ou au modèle/au rôle choisi). Le meilleur modèle disponible est utilisé par défaut, affiné par type de tâche (code, writing, analysis, longcontext, multimodal, cheap, local).",
+        "Delegates a task to the best-suited model (or to the chosen model/role). The best available model is used by default, refined by task type (code, writing, analysis, longcontext, multimodal, cheap, local).",
       inputSchema: {
         type: "object",
         required: ["task"],
         properties: {
-          task: { type: "string", description: "La tâche à exécuter" },
-          taskType: { type: "string", enum: Object.keys(config.routing), description: "Type de tâche (détecté automatiquement si omis)" },
+          task: { type: "string", description: "The task to execute" },
+          taskType: { type: "string", enum: Object.keys(config.routing), description: "Task type (auto-detected if omitted)" },
           model: { type: "string", description: `Forcer un modèle précis (id exact, ex: ${known.slice(0, 3).join(", ") || "gpt-5"}...)` },
-          role: { type: "string", enum: Object.keys(config.roles || {}), description: "Mini-prompt de spécialiste appliqué à la tâche (orchestrator, github-manager, auditor, business-analyst...)" },
-          maxTokens: { type: "integer", description: "Taille max de la réponse (défaut 2048)" },
+          role: { type: "string", enum: Object.keys(config.roles || {}), description: "Specialist mini-prompt applied to the task (orchestrator, github-manager, auditor, business-analyst...)" },
+          maxTokens: { type: "integer", description: "Max response size (default 2048)" },
         },
       },
     },
     {
       name: "llm_orchestrate",
       description:
-        "Mode orchestrateur : décompose une demande en sous-tâches, assigne un rôle de spécialiste à chacune (orchestrator, github-manager, auditor, business-analyst...), exécute chaque sous-tâche sur le modèle le plus adapté, puis synthétise.",
+        "Orchestrator mode: splits a request into subtasks, assigns a specialist role to each (orchestrator, github-manager, auditor, business-analyst...), runs each subtask on the best-suited model, then synthesizes.",
       inputSchema: {
         type: "object",
         required: ["request"],
         properties: {
-          request: { type: "string", description: "La demande complète de l'utilisateur" },
-          maxSubtasks: { type: "integer", description: "Nombre max de sous-tâches (défaut 5)" },
-          roles: { type: "boolean", description: "Activer l'assignation de rôles spécialistes (défaut true)" },
+          request: { type: "string", description: "The user's full request" },
+          maxSubtasks: { type: "integer", description: "Max number of subtasks (default 5)" },
+          roles: { type: "boolean", description: "Enable specialist role assignment (default true)" },
         },
       },
     },
