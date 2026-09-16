@@ -77,6 +77,14 @@ show me every prompt in full, and wait for my confirmation.
 
 Its 15 `definitionOfDone` commands **have been exercised against fixtures** in a simulated run
 directory: each passes on a complete run and fails when the artifact it guards is removed or
-mutated (including reverting a translated marker). **No role of this kyber has ever run
-end-to-end** — no agent was executed here, so this shows the criteria are machine-checkable,
-not that the team writes a good digest.
+mutated (including reverting a translated marker).
+
+The kyber has since been **run end-to-end once, on a real subject** (which Node.js release lines
+are supported as of 2026-09-16). All four stages executed, all five roles returned, all 15 DoD
+commands passed, and the digest was independently fact-checked as accurate. That run also
+produced the finding that matters most for reading this file: **the DoD verifies the form of a
+contract, never its truth.** The framing DoD counts `R<n>:` lines, so it passed 4/4 while no
+human was ever interrogated — the answers came from the orchestrator, and 2 of 10 were
+transcribed `OPEN — no answer received`. The collection DoD greps `^200 ` and counts files, so it
+passed while only 3 of 7 receipt sha256 values reproduced on independent re-fetch. A receipt and
+an interview are self-attested; nothing cross-checks either.

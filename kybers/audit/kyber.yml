@@ -34,13 +34,18 @@ stages:
   # Map BEFORE searching. Without this stage, every auditor rediscovers the scope
   # in its own way and two surfaces overlap or ignore each other in silence.
   #
-  # No `gate: true` here, and it is not an oversight: the lint refuses a gate
-  # without `inputs` ("a gate that validates nothing"), and a first stage has
-  # nothing to receive. What really holds the downstream is the declared
-  # dependency — the `findings` stage does not start without `inputs: [mapping]`.
+  # The gate below expresses "map before searching": nothing starts before the
+  # mapping is validated. An earlier revision of this file omitted it and claimed
+  # the lint refused a gate without `inputs`, quoting "a gate that validates
+  # nothing" — a message that does not exist in lint.cjs. The validator legalises
+  # an entry-stage gate explicitly ("était refusée à tort") and emits a warning.
+  # The declared dependency (`findings` does not start without `inputs: [mapping]`)
+  # still carries the ordering, but ordering is not enforcement: no platform
+  # primitive makes this gate bind. It is declared intent.
   - id: mapping
     roles: [cartographer]
     mode: once
+    gate: true
 
   # `forEach` over the zones identified by the mapping: one auditor per
   # (surface × discipline), not one auditor for the whole repository. It is the

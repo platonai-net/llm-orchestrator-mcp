@@ -28,7 +28,9 @@ express.
 
 - `cap: <integer >= 1>` — ceiling on simultaneous agents. Taken from the hard cap of 6.
 - `gate: true` — nothing downstream leaves before this stage validates. Taken from
-  "zero speculative launch pre-GO". Requires `inputs` **and** a downstream stage.
+  "zero speculative launch pre-GO". Requires a downstream stage that cites it in its
+  `inputs`; an entry stage MAY carry a gate (warning only), and so may a terminal
+  stage. Note that no platform primitive enforces a gate — it is declared intent.
 - `definitionOfDone: [<commands>]` — "a DoD not verifiable by command is not a DoD".
   Taken from the delegation contract.
 
