@@ -50,11 +50,13 @@ elucidation: required
 maxDepth: 1
 
 stages:
-  # Read-only reconnaissance. No parallelism is declarable here: this is the root
-  # stage, it has no `inputs`, so `mode: forEach` is refused by the validator —
-  # and yet the kybernos-parallel doctrine allows "N read-only scouts over
-  # disjoint areas". This fan-out is therefore lost at declaration time and
-  # reported in the mapper's prompt. See the report.
+  # Read-only reconnaissance. No parallelism is declared here: `mode: forEach`
+  # iterates over `inputs`, and this root stage has none, so there is nothing to
+  # iterate over. The validator no longer refuses the construct — it warns — but
+  # declaring `forEach` on an empty input set would not produce the fan-out the
+  # kybernos-parallel doctrine allows ("N read-only scouts over disjoint areas").
+  # That fan-out is therefore carried by the mapper's prompt rather than by the
+  # topology. See the report.
   - id: cartographie
     roles: [cartographe]
     mode: once
@@ -160,16 +162,23 @@ stages:
     inputs: [implementation, test]
     adversarial: true
 
-  # Delivery and traceability. No `gate: true` here, and that is not an
-  # oversight: the validator requires a gate to guard a downstream stage, so a
-  # TERMINAL gate is structurally impossible. Yet the kybernos doctrine places
-  # its most important gate at the very end — "Push to main/staging = explicit
-  # human validation (production gate)". That final human validation is
-  # expressible nowhere. See the report.
+  # Delivery and traceability. The gate below expresses the kybernos doctrine's
+  # most important gate — "Push to main/staging = explicit human validation
+  # (production gate)". It is TERMINAL: no stage is downstream, so it guards the
+  # delivery itself. An earlier revision of this file omitted it on the belief
+  # that a terminal gate was structurally impossible; that belief was false, and
+  # the validator now accepts it explicitly.
+  #
+  # What remains true, and must be reported rather than hidden: no platform
+  # primitive enforces a gate. On most platforms this gate survives only as the
+  # ordering written into the integrator's prompt, and nothing mechanically
+  # prevents a push. Declaring it keeps the intent auditable; it does not make
+  # it binding. See the report.
   - id: livraison
     roles: [livreur]
     mode: once
     inputs: [revue-adversariale, test]
+    gate: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Roles.
