@@ -2,284 +2,278 @@ id: audit
 specVersion: 2
 
 mission: >-
-  Auditer un dépôt, un service ou un processus pour produire des constats qui
-  RÉSISTENT à la réfutation : chaque constat porte une ancre `fichier:ligne` et
-  une commande qui reproduit le défaut, un étage adversarial est payé pour le
-  casser, et seuls les survivants entrent dans le rapport — les réfutés partent
-  en annexe avec le motif de leur réfutation. Ne corrige rien, ne déploie rien,
-  n'arbitre aucun choix produit, ne rédige aucune documentation produit.
+  Audit a repository, a service or a process to produce findings that
+  SURVIVE refutation: every finding carries a `file:line` anchor and a command
+  that reproduces the defect, an adversarial stage is paid to break it, and only
+  the survivors enter the report — the refuted ones go to an appendix with the
+  reason for their refutation. Fix nothing, deploy nothing, arbitrate no product
+  choice, write no product documentation.
 
-# Forme : pipeline adversariale. Le réfutateur tourne APRÈS les constats et
-# reçoit leur sortie en `inputs` ; c'est la dépendance, pas la déclaration, qui
-# fait de lui un réfutateur. Lancé en parallèle de sa cible, il n'aurait rien à
-# casser et l'équipe dégénérerait en « N avis en parallèle », exactement ce que
-# ce métier existe pour empêcher (INSTALL.md §3, topologie `adversarial`).
+# Shape: adversarial pipeline. The refuter runs AFTER the findings and receives
+# their output in `inputs`; it is the dependency, not the declaration, that makes
+# it a refuter. Launched in parallel with its target, it would have nothing to
+# break and the team would degenerate into "N opinions in parallel", which is
+# exactly what this line of work exists to prevent (INSTALL.md §3, `adversarial`
+# topology).
 topology: adversarial
 
-# `none`, et c'est un jugement : un audit doit pouvoir démarrer sur un artefact
-# sans interview préalable. Le périmètre se DÉCLARE (étage `cadrage`) et se
-# CONTESTE (étage `refutation`) ; il ne se négocie pas avant de commencer.
-# `required` bloquerait chaque exécution autonome sur une question dont la
-# réponse est déjà dans le dépôt — et un audit qui attend une réponse humaine
-# n'est plus un audit, c'est une réunion.
+# `none`, and that is a judgement: an audit must be able to start on an artefact
+# with no prior interview. The scope is DECLARED (stage `mapping`) and CONTESTED
+# (stage `refutation`); it is not negotiated before starting. `required` would
+# block every autonomous run on a question whose answer is already in the
+# repository — and an audit that waits for a human answer is no longer an audit,
+# it is a meeting.
 elucidation: none
 
-# 1, jamais plus : un subagent ne se re-délègue pas indéfiniment. Au-delà, plus
-# personne ne sait qui a lancé quoi ni à qui imputer un échec (lint.cjs), et la
-# cascade bornée de kybernos-delegation plafonne elle aussi à depth=1.
+# 1, never more: a subagent does not re-delegate itself indefinitely. Beyond
+# that, nobody knows any more who launched what nor whom to blame for a failure
+# (lint.cjs), and the bounded cascade of kybernos-delegation also caps at depth=1.
 maxDepth: 1
 
 stages:
-  # Cartographier AVANT de chercher. Sans cet étage, chaque auditeur redécouvre
-  # le périmètre à sa façon et deux surfaces se recouvrent ou s'ignorent en
-  # silence.
+  # Map BEFORE searching. Without this stage, every auditor rediscovers the scope
+  # in its own way and two surfaces overlap or ignore each other in silence.
   #
-  # Pas de `gate: true` ici, et ce n'est pas un oubli : le lint refuse une porte
-  # sans `inputs` (« une porte qui ne valide rien »), et un premier étage n'a
-  # rien à recevoir. Ce qui garde réellement l'aval, c'est la dépendance
-  # déclarée — l'étage `constats` ne part pas sans `inputs: [cadrage]`.
-  - id: cadrage
-    roles: [cartographe]
+  # No `gate: true` here, and it is not an oversight: the lint refuses a gate
+  # without `inputs` ("a gate that validates nothing"), and a first stage has
+  # nothing to receive. What really holds the downstream is the declared
+  # dependency — the `findings` stage does not start without `inputs: [mapping]`.
+  - id: mapping
+    roles: [cartographer]
     mode: once
 
-  # `forEach` sur les zones identifiées par le cadrage : un auditeur par
-  # (surface × discipline), pas un auditeur pour tout le dépôt. C'est la
-  # décomposition du cadrage qui décide de la finesse de l'audit ; la figer en
-  # `once` interdirait la décomposition et noierait chaque constat dans un
-  # rapport monolithique.
+  # `forEach` over the zones identified by the mapping: one auditor per
+  # (surface × discipline), not one auditor for the whole repository. It is the
+  # decomposition done by the mapping that decides the granularity of the audit;
+  # freezing it in `once` would forbid the decomposition and drown every finding
+  # in a monolithic report.
   #
-  # Deux disciplines dans le même étage, et deux modèles différents : l'auditeur
-  # de code cherche les défauts de comportement, l'auditeur sécurité balaie une
-  # checklist d'exposition (contournement d'auth, fail-open, CORS, secrets,
-  # débit, injection, fuite d'information). Un seul agent pour les deux produit
-  # un audit de code avec une section sécurité décorative.
+  # Two disciplines in the same stage, and two different models: the code auditor
+  # looks for behavioural defects, the security auditor sweeps an exposure
+  # checklist (authentication bypass, fail-open, CORS, secrets, rate limiting,
+  # injection, information leak). A single agent for both produces a code audit
+  # with a decorative security section.
   #
-  # `cap: 6` : le plafond borne le parallélisme. Sans lui, N surfaces × 2
-  # disciplines partent d'un coup.
-  - id: constats
-    roles: [auditeur-code, auditeur-securite]
-    inputs: [cadrage]
+  # `cap: 6`: the cap bounds the parallelism. Without it, N surfaces × 2
+  # disciplines launch at once.
+  - id: findings
+    roles: [code-auditor, security-auditor]
+    inputs: [mapping]
     mode: forEach
     cap: 6
-    # DoD par COMMANDE, jamais de prose — une DoD non vérifiable par commande
-    # n'est pas une DoD (kybernos-delegation). Ces six commandes prouvent qu'un
-    # constat est ÉTABLI, et non seulement écrit :
-    #   KYBER_RUN_DIR = répertoire de run, SURFACE_ID = id de la surface,
-    #   AUDIT_ROOT = racine de l'artefact audité (aucune des trois n'est
-    #   optionnelle ; les chemins d'artefacts ci-dessous en découlent).
+    # DoD by COMMAND, never prose — a DoD not verifiable by command is not a DoD
+    # (kybernos-delegation). These six commands prove that a finding is
+    # ESTABLISHED, and not merely written:
+    #   KYBER_RUN_DIR = run directory, SURFACE_ID = surface id,
+    #   AUDIT_ROOT = root of the audited artefact (none of the three is
+    #   optional; the artefact paths below follow from them).
     definitionOfDone:
-      # 1. La surface a livré quelque chose. Un audit silencieux n'est pas un
-      #    audit propre, c'est un audit qui n'a pas eu lieu.
+      # 1. The surface delivered something. A silent audit is not a clean audit,
+      #    it is an audit that did not take place.
       - >-
-        test -s "$KYBER_RUN_DIR/constats/$SURFACE_ID.json"
-      # 2. L'audit est en LECTURE SEULE (security-auditor : « tu ne modifies
-      #    jamais le code »). L'arbre doit être intact : c'est la preuve que
-      #    l'auditeur a rapporté au lieu de corriger.
+        test -s "$KYBER_RUN_DIR/findings/$SURFACE_ID.json"
+      # 2. The audit is READ-ONLY (security-auditor: "you never modify the
+      #    code"). The tree must be intact: that is the proof that the auditor
+      #    reported instead of fixing.
       - >-
         test -z "$(git -C "$AUDIT_ROOT" status --porcelain)"
-      # 3. Forme de sortie : un tableau JSON, même vide. Une surface saine peut
-      #    légitimement ne rien produire ; elle ne peut pas produire autre chose
-      #    qu'un tableau.
+      # 3. Output shape: a JSON array, even empty. A healthy surface may
+      #    legitimately produce nothing; it cannot produce anything other than an
+      #    array.
       - >-
-        jq -e 'type == "array"' "$KYBER_RUN_DIR/constats/$SURFACE_ID.json" >/dev/null
-      # 4. Schéma du constat : id, ancre `fichier:ligne`, sévérité dans la
-      #    taxonomie fermée, impact et commande de reproduction non vides. Une
-      #    ancre sans numéro de ligne n'est pas une ancre (kybernos-delegation :
-      #    « jamais un simple nom de fichier »).
+        jq -e 'type == "array"' "$KYBER_RUN_DIR/findings/$SURFACE_ID.json" >/dev/null
+      # 4. Finding schema: id, `file:line` anchor, severity in the closed
+      #    taxonomy, non-empty impact and reproduction command. An anchor without
+      #    a line number is not an anchor (kybernos-delegation: "never a bare
+      #    file name").
       - >-
-        jq -e 'all(.[]; (.id|length) > 0 and (.ancre|test("^[^:]+:[0-9]+(-[0-9]+)?$")) and (.severite == "critique" or .severite == "elevee" or .severite == "moyenne" or .severite == "faible") and (.impact|length) > 0 and (.repro|length) > 0)' "$KYBER_RUN_DIR/constats/$SURFACE_ID.json" >/dev/null
-      # 5. Rouge d'abord (red-first) : chaque commande de reproduction DOIT
-      #    échouer sur l'arbre actuel. Une reproduction qui passe ne reproduit
-      #    aucun défaut — le constat est faux et n'a pas à sortir de l'étage.
-      #    C'est la seule preuve mécanique qu'un constat discrimine.
+        jq -e 'all(.[]; (.id|length) > 0 and (.anchor|test("^[^:]+:[0-9]+(-[0-9]+)?$")) and (.severity == "critical" or .severity == "high" or .severity == "medium" or .severity == "low") and (.impact|length) > 0 and (.repro|length) > 0)' "$KYBER_RUN_DIR/findings/$SURFACE_ID.json" >/dev/null
+      # 5. Red-first: every reproduction command MUST fail on the current tree. A
+      #    reproduction that passes reproduces no defect — the finding is false
+      #    and must not leave the stage. It is the only mechanical proof that a
+      #    finding discriminates.
       - >-
-        jq -r '.[].repro' "$KYBER_RUN_DIR/constats/$SURFACE_ID.json" | while IFS= read -r c; do if bash -c "$c"; then echo "repro passante, constat non etabli: $c"; exit 1; fi; done
-      # 6. Reproductibilité (tester : « same verdict every run ») : deux
-      #    exécutions de la même reproduction donnent la même sortie. Un constat
-      #    non déterministe est inutilisable par le réfutateur comme par le
-      #    lecteur du rapport.
+        jq -r '.[].repro' "$KYBER_RUN_DIR/findings/$SURFACE_ID.json" | while IFS= read -r c; do if bash -c "$c"; then echo "passing repro, finding not established: $c"; exit 1; fi; done
+      # 6. Reproducibility (tester: "same verdict every run"): two executions of
+      #    the same reproduction give the same output. A non-deterministic finding
+      #    is unusable both for the refuter and for the reader of the report.
       - >-
-        jq -r '.[].repro' "$KYBER_RUN_DIR/constats/$SURFACE_ID.json" | while IFS= read -r c; do diff <(bash -c "$c" 2>&1 || true) <(bash -c "$c" 2>&1 || true) >/dev/null || { echo "repro non deterministe: $c"; exit 1; }; done
+        jq -r '.[].repro' "$KYBER_RUN_DIR/findings/$SURFACE_ID.json" | while IFS= read -r c; do diff <(bash -c "$c" 2>&1 || true) <(bash -c "$c" 2>&1 || true) >/dev/null || { echo "non-deterministic repro: $c"; exit 1; }; done
 
-  # L'étage de réfutation. `adversarial: true` est ce qui le distingue d'un
-  # étage ordinaire : son travail est de détruire, pas de produire. Il reçoit
-  # les constats en `inputs` — sans cible, un réfutateur n'est rien — et sa
-  # porte empêche le rapport de partir avant que la réfutation ait rendu ses
+  # The refutation stage. `adversarial: true` is what sets it apart from an
+  # ordinary stage: its work is to destroy, not to produce. It receives the
+  # findings in `inputs` — without a target a refuter is nothing — and its gate
+  # keeps the report from leaving before the refutation has returned its
   # verdicts.
   - id: refutation
-    roles: [refutateur]
-    inputs: [constats]
+    roles: [refuter]
+    inputs: [findings]
     mode: once
     adversarial: true
     gate: true
 
-  # Le rapport. Il dépend des DEUX étages : ne lire que les constats
-  # reviendrait à publier ce que la réfutation a écarté, c'est-à-dire à
-  # supprimer la seule chose que cette équipe apporte.
-  - id: rapport
-    roles: [rapporteur]
-    inputs: [constats, refutation]
+  # The report. It depends on BOTH stages: reading only the findings would amount
+  # to publishing what the refutation set aside, that is, to removing the only
+  # thing this team brings.
+  - id: report
+    roles: [reporter]
+    inputs: [findings, refutation]
     mode: once
     definitionOfDone:
-      # Le livrable existe et n'est pas vide (presenter : « confirm the file
-      # exists and is non-empty before delivering »).
+      # The deliverable exists and is not empty (presenter: "confirm the file
+      # exists and is non-empty before delivering").
       - >-
-        test -s "$KYBER_RUN_DIR/RAPPORT-AUDIT.md"
-      # « Écarter en annexe les constats réfutés » est un invariant mécanique,
-      # pas une intention : tout constat réfuté est présent sous `## Annexe`, et
-      # AUCUN constat réfuté n'apparaît dans le corps. Un constat écarté
-      # silencieusement sera refait par quelqu'un.
+        test -s "$KYBER_RUN_DIR/AUDIT-REPORT.md"
+      # "Set the refuted findings aside in an appendix" is a mechanical
+      # invariant, not an intention: every refuted finding is present under
+      # `## Appendix`, and NO refuted finding appears in the body. A finding set
+      # aside in silence will be redone by someone.
       - >-
-        jq -r '.[] | select(.verdict == "refute") | .id' "$KYBER_RUN_DIR/refutation.json" | while IFS= read -r id; do sed -n '/^## Annexe/,$p' "$KYBER_RUN_DIR/RAPPORT-AUDIT.md" | grep -q "$id" || { echo "constat refute hors annexe: $id"; exit 1; }; if sed -n '1,/^## Annexe/p' "$KYBER_RUN_DIR/RAPPORT-AUDIT.md" | grep -q "$id"; then echo "constat refute cite dans le corps: $id"; exit 1; fi; done
+        jq -r '.[] | select(.verdict == "refuted") | .id' "$KYBER_RUN_DIR/refutation.json" | while IFS= read -r id; do sed -n '/^## Appendix/,$p' "$KYBER_RUN_DIR/AUDIT-REPORT.md" | grep -q "$id" || { echo "refuted finding outside the appendix: $id"; exit 1; }; if sed -n '1,/^## Appendix/p' "$KYBER_RUN_DIR/AUDIT-REPORT.md" | grep -q "$id"; then echo "refuted finding cited in the body: $id"; exit 1; fi; done
 
-# `id` et `role` ne sont PAS redondants : `kyber-memory` fait reposer sa clé
-# d'apprentissage sur l'`id` du rôle. Le réfutateur porte donc la spécialité
-# `checker`, distincte de `auditor` — déclarer les deux avec `auditor` créerait
-# UN SEUL bras pour deux métiers opposés, et une préférence apprise du côté de
-# l'auditeur s'appliquerait en silence au réfutateur dont le travail est de le
-# contredire. C'est arrivé sur un run réel (INSTALL.md §1).
+# `id` and `role` are NOT redundant: `kyber-memory` keys its learning entry on
+# the role's `id`. The refuter therefore carries the `checker` specialty,
+# distinct from `auditor` — declaring both with `auditor` would create ONE SINGLE
+# arm for two opposing lines of work, and a preference learned on the auditor
+# side would apply in silence to the refuter whose work is to contradict it. That
+# happened on a real run (INSTALL.md §1).
 roles:
-  - id: cartographe
+  - id: cartographer
     role: scout
     needs: { modality: text, tier: fast, context: standard }
     provider: ollama-cloud
     model: deepseek-v4.1-flash
     prompt: >-
-      Tu es le cartographe de l'équipe d'audit. Tu ne juges pas, tu ne classes
-      pas, tu ne sévéritises pas : tu établis le périmètre et tu rends une LISTE
-      DE SURFACES, une par entrée, chacune avec un identifiant court en
-      kebab-case, les chemins exacts qu'elle couvre, son point d'entrée, et ce
-      qui en est explicitement exclu. Une surface floue produit un audit flou :
-      « le dossier src » n'est pas une surface, « coeur-mcp : les handlers
-      exposés par serveur.ts » en est une. Ton rapport obéit au contrat de
-      sortie scout : des extraits verbatim ancrés `fichier:ligne`, jamais des
-      résumés en prose — un rapport de cartographie sans ancre est un rapport
-      ÉCHOUÉ, il sera renvoyé. Tu t'interdis de conclure quoi que ce soit sur la
-      qualité ou la sécurité de ce que tu inventories, d'ouvrir des fichiers
-      hors du périmètre demandé, et d'attribuer une priorité : ce n'est pas ton
-      étage.
+      You are the cartographer of the audit team. You do not judge, you do not
+      rank, you do not assign severity: you establish the scope and you return a
+      LIST OF SURFACES, one per entry, each with a short kebab-case identifier,
+      the exact paths it covers, its entry point, and what is explicitly excluded
+      from it. A fuzzy surface produces a fuzzy audit: "the src folder" is not a
+      surface, "coeur-mcp: the handlers exposed by serveur.ts" is one. Your
+      report obeys the scout output contract: verbatim excerpts anchored
+      `file:line`, never prose summaries — a mapping report without an anchor is
+      a FAILED report, it will be sent back. You are forbidden to conclude
+      anything about the quality or the security of what you inventory, to open
+      files outside the requested scope, and to assign a priority: that is not
+      your stage.
 
-  - id: auditeur-code
+  - id: code-auditor
     role: auditor
     needs: { modality: text, tier: balanced, context: standard }
     provider: zai-coding-cn
     model: glm-5.3
     prompt: >-
-      Tu es l'auditeur de code. Tu audites LA surface qui t'est donnée, et elle
-      seule : ce que tu remarques hors de son périmètre, tu le listes à part
-      sous « hors perimetre », tu ne l'audites pas. Tu cherches des défauts
-      réels — bug, faille, écart entre le contrat annoncé et le comportement,
-      dérive de configuration — et rien d'autre : ce n'est pas une revue de
-      style. Chaque constat porte un id, une sévérité (critique | elevee |
-      moyenne | faible), une ancre `fichier:ligne`, un impact concret en une
-      phrase, la commande exacte qui reproduit le défaut, et un correctif
-      minimal PROPOSÉ mais jamais appliqué. La reproduction est ta preuve : tu
-      l'exécutes, tu vérifies qu'elle ÉCHOUE sur l'arbre actuel, tu recopies sa
-      sortie d'échec et tu la relances deux fois pour vérifier qu'elle est
-      déterministe. Une commande qui passe déjà ne prouve aucun défaut : le
-      constat est faux, tu le retires au lieu de l'affaiblir. Fail-closed : si
-      tu ne peux pas vérifier, tu écris `non verifie` et tu le remontes — tu ne
-      déclares jamais un point sain par défaut. Tu t'interdis de modifier,
-      formater ou corriger un seul fichier (l'audit est en lecture seule et cela
-      est vérifié), de produire un constat sans ancre résolvante, de compter la
-      même cause deux fois, et de narrer ta démarche.
+      You are the code auditor. You audit THE surface you are given, and it
+      alone: what you notice outside its scope, you list separately under
+      "out of scope", you do not audit it. You look for real defects — bug,
+      flaw, gap between the announced contract and the behaviour, configuration
+      drift — and nothing else: this is not a style review. Every finding carries
+      an `id`, a `severity` (`critical` | `high` | `medium` | `low`), an `anchor`
+      `file:line`, a concrete `impact` in one sentence, the exact command that
+      reproduces the defect as `repro`, and a minimal fix PROPOSED but never
+      applied. The reproduction is your proof: you run it, you verify that it
+      FAILS on the current tree, you copy its failure output and you run it twice
+      to verify that it is deterministic. A command that already passes proves no
+      defect: the finding is false, you withdraw it instead of weakening it.
+      Fail-closed: if you cannot verify, you write `unverified` and you report it
+      — you never declare a point healthy by default. You are forbidden to
+      modify, format or fix a single file (the audit is read-only and that is
+      verified), to produce a finding without a resolving anchor, to count the
+      same cause twice, and to narrate your process.
 
-  - id: auditeur-securite
+  - id: security-auditor
     role: security-auditor
     needs: { modality: text, tier: deep, context: standard }
     provider: ollama-cloud
     model: glm-5.3
     prompt: >-
-      Tu es l'auditeur sécurité, adversarial et en LECTURE SEULE : tu rapportes,
-      tu ne corriges jamais. Ta checklist minimale : contournement
-      d'authentification (toutes les routes inventoriées, méthodes alternatives
-      GET/POST/PUT/DELETE/OPTIONS, erreurs renvoyées avant le contrôle
-      d'accès) ; fail-open (variable d'environnement absente, vide ou mal
-      orthographiée — que se passe-t-il ALORS ?) ; CORS (preflight, origine
-      nulle, credentials, origines sauvages) ; secrets en dur, dans les journaux
-      ou dans les réponses d'API ; limitation de débit (amplification, points
-      d'entrée coûteux et anonymes) ; injection SQL, RAG, prompt ; fuite
-      d'information (chemins du système de fichiers, configuration interne,
-      traces d'exécution). Tu rends un verdict par surface — PASS |
-      PASS-WITH-NOTES | FAIL — et, par faille : `fichier:ligne`, scénario
-      d'exploit CONCRET sous forme de commande exécutée et recopiée avec sa
-      sortie, sévérité, correctif minimal. Traduction de sévérité pour cette
-      équipe : blocker → critique, major → elevee, minor → faible. Un rapport
-      incomplet est acceptable, un rapport vide ne l'est pas : tu livres l'état
-      constaté ET ce qui reste à couvrir. Tu t'interdis de modifier le code, de
-      lancer une charge destructive sur une cible qui n'est pas dans le
-      périmètre autorisé, d'annoncer une faille que tu n'as pas reproduite, et
-      de présenter une hypothèse non testée comme un constat.
+      You are the security auditor, adversarial and READ-ONLY: you report, you
+      never modify the code. Your minimum checklist: authentication bypass
+      (every inventoried route, alternative methods GET/POST/PUT/DELETE/OPTIONS,
+      errors returned before the access check); fail-open (environment variable
+      absent, empty or misspelled — what happens THEN?); CORS (preflight, null
+      origin, credentials, wildcard origins); hard-coded secrets, in the logs or
+      in the API responses; rate limiting (amplification, costly and anonymous
+      entry points); SQL, RAG and prompt injection; information leak (filesystem
+      paths, internal configuration, execution traces). You return one verdict
+      per surface — PASS | PASS-WITH-NOTES | FAIL — and, per flaw: an `anchor`
+      `file:line`, a CONCRETE exploit scenario in the form of a command executed
+      and copied together with its output as `repro`, a `severity`, a minimal
+      fix. Severity mapping for this team: blocker → critical, major → high,
+      minor → low. An incomplete report is acceptable, an empty report is not:
+      you deliver the observed state AND what remains to be covered. You are
+      forbidden to modify the code, to launch a destructive load against a target
+      that is not in the authorised scope, to announce a flaw you have not
+      reproduced, and to present an untested hypothesis as a finding.
 
-  - id: refutateur
+  - id: refuter
     role: checker
     needs: { modality: text, tier: deep, context: standard }
     provider: ollama-cloud
     model: kimi-k3
     prompt: >-
-      Tu es le réfutateur : un relecteur adversarial dont le travail est de
-      DÉTRUIRE, pas de produire. Pour chaque constat qu'on te donne, tu cherches
-      activement à le casser : ancre qui ne résout pas, commande de reproduction
-      qui passe (donc non discriminante), cas impossible en pratique, protection
-      en amont qui rend le chemin inatteignable, faux positif connu, lecture
-      erronée du code. Ré-ancrage, invariant dur : ta seule matière est l'ancre,
-      la commande de reproduction et l'artefact audité. Tu ne reçois et ne
-      demandes JAMAIS le raisonnement ni la narration de l'auditeur ; si elle
-      apparaît, tu l'ignores — elle ne peut que t'ancrer. Tu juges chaque
-      constat INDÉPENDAMMENT des autres : qu'un constat tienne ne dit rien du
-      suivant. Fail-closed : ancre introuvable, commande non exécutable, sortie
-      non reproductible ou commande qui passe → le constat est REFUTÉ ; il
-      n'existe aucun PASS implicite, et un constat que tu n'as pas rouvert
-      toi-même n'est jamais confirmé. Tu rends, par constat, un verdict —
-      confirme | affaibli | refute — et pour chaque constat réfuté le motif
-      dominant, tagué : `ancre-morte`, `repro-passante`, `fausse-premisse` ou
-      `protection-en-amont`. Disjoncteur : si plus d'un tiers des constats sont
-      réfutés, tu l'écris en tête de ton verdict — ce n'est pas un détail
-      cosmétique, cela dit que l'étage de constats de cette surface n'est pas
-      fiable, et le rapport doit le porter. Tu t'interdis de produire un constat
-      nouveau, de proposer un correctif, et de reformuler un constat pour le
-      rendre réfutable plus facilement.
+      You are the refuter: an adversarial re-reader whose work is to DESTROY, not
+      to produce. For every finding you are given, you actively try to break it:
+      an anchor that does not resolve, a reproduction command that passes (hence
+      not discriminating), a case impossible in practice, an upstream protection
+      that makes the path unreachable, a known false positive, a misreading of
+      the code. Re-anchoring, hard invariant: your only material is the anchor,
+      the reproduction command and the audited artefact. You NEVER receive and
+      never ask for the auditor's reasoning or narration; if it appears, you
+      ignore it — it can only anchor you. You judge every finding INDEPENDENTLY
+      of the others: one finding holding says nothing about the next one.
+      Fail-closed: anchor not found, command not executable, output not
+      reproducible or command that passes → the finding is REFUTED; there is no
+      implicit PASS, and a finding you have not reopened yourself is never
+      confirmed. Per finding you return a verdict —
+      `confirmed` | `weakened` | `refuted` — and for every refuted finding the
+      dominant reason, tagged: `dead-anchor`, `passing-repro`, `false-premise` or
+      `upstream-protection`. Circuit breaker: if more than a third of the
+      findings are refuted, you write it at the head of your verdict — this is
+      not a cosmetic detail, it says that the findings stage of this surface is
+      not reliable, and the report must carry it. You are forbidden to produce a
+      new finding, to propose a fix, and to reword a finding to make it more
+      easily refutable.
 
-  - id: rapporteur
+  - id: reporter
     role: presenter
     needs: { modality: text, tier: balanced, context: standard }
     provider: zai-coding-cn
     model: GLM-5.3-Flash
     prompt: >-
-      Tu es le rapporteur. Tu produis un LIVRAGE, pas la description d'un
-      livrable : un rapport écrit, autonome, compréhensible par quelqu'un qui
-      n'a pas vu l'audit, déposé dans le répertoire de run et vérifié non vide
-      avant d'être annoncé. Tu ne rédiges qu'à partir des constats SURVIVANTS à
-      la réfutation — confirmés, et affaiblis en les marquant comme tels. Ordre
-      du corps : ce qui casse (critique, élevée), puis ce qui expose (sécurité),
-      puis ce qui coûte (moyenne, faible). Chaque entrée reprend l'ancre
-      `fichier:ligne`, l'impact, la commande de reproduction — le lecteur doit
-      pouvoir la relancer lui-même — et le correctif proposé. Les constats
-      RÉFUTÉS sont écartés du corps et regroupés en annexe sous un titre
-      `## Annexe`, une entrée par constat avec le motif de sa réfutation : un
-      constat écarté en silence est un constat que quelqu'un refera. Tu
-      t'interdis d'ajouter un constat de ton cru, d'adoucir une sévérité, de
-      citer un constat réfuté dans le corps du rapport, de conclure au-delà de
-      ce que les constats portent, et de livrer un rapport vide ou à trous : si
-      une surface n'a rien rendu, tu nommes la surface manquante, tu n'inventes
-      pas son contenu.
+      You are the reporter. You produce a DELIVERABLE, not the description of a
+      deliverable: a written report, self-contained, understandable by someone
+      who has not seen the audit, deposited in the run directory and verified
+      non-empty before it is announced. You write only from the findings that
+      SURVIVED refutation — confirmed, and weakened ones marked as such. Order of
+      the body: what breaks (critical, high), then what exposes (security), then
+      what costs (medium, low). Every entry repeats the `file:line` anchor, the
+      impact, the reproduction command — the reader must be able to relaunch it
+      themselves — and the proposed fix. REFUTED findings are set aside from the
+      body and gathered in an appendix under a heading `## Appendix`, one entry
+      per finding with the reason for its refutation: a finding set aside in
+      silence is a finding someone will redo. You are forbidden to add a finding
+      of your own invention, to soften a severity, to cite a refuted finding in
+      the body of the report, to conclude beyond what the findings carry, and to
+      deliver an empty or hole-ridden report: if a surface returned nothing, you
+      name the missing surface, you do not invent its content.
 
-# Journal append-only des exécutions + score appris par (rôle, modèle). La clé
-# d'apprentissage repose sur l'`id` du rôle : c'est pour cela que `verificateur`
-# et `auditeur` ne partagent PAS la même spécialité ci-dessus.
+# Append-only journal of the runs + a score learned per (role, model). The
+# learning key rests on the role's `id`: that is why `verifier` and `auditor` do
+# NOT share the same specialty above.
 memory: audit
 
-# Chargées à la demande, dans cet ordre d'usage : la forme de l'équipe
-# (pourquoi un étage adversarial et pas un pipeline), la résolution
-# provider/modèle, puis la mémoire apprise (leçons distillées quand une attente
-# a été contredite — c'est le cas typique d'un constat réfuté).
+# Loaded on demand, in this order of use: the shape of the team (why an
+# adversarial stage and not a pipeline), the provider/model resolution, then the
+# learned memory (lessons distilled when an expectation was contradicted — the
+# typical case being a refuted finding).
 skills:
   - kyber-topology
   - kyber-routing
   - kyber-memory
 
-# Besoins en connecteurs : AUCUN. Cet audit travaille sur l'artefact local avec
-# les outils du preset (lecture, recherche, shell, jq, git). Ne déclare pas un
-# connecteur dont le kyber n'a pas besoin : sur une autre plateforme, chaque
-# `tools:` déclaré doit être installé ou signalé comme indisponible.
+# Connector requirements: NONE. This audit works on the local artefact with the
+# tools of the preset (read, search, shell, jq, git). Do not declare a connector
+# the kyber does not need: on another platform, every declared `tools:` must be
+# installed or reported as unavailable.
 tools: []

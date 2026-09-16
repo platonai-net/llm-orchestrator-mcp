@@ -1,150 +1,147 @@
-# CHANGELOG — spec kybernos
+# CHANGELOG — kybernos spec
 
-Journal des modifications du **format** et des documents normatifs. Toute
-modification de `CONVENTION.md`, `INSTALL.md`, `INSTALL-PROMPT.md` ou `lint.cjs`
-DOIT apparaître ici — y compris une correction de rédaction.
+Log of changes to the **format** and to the normative documents. Any modification of
+`CONVENTION.md`, `INSTALL.md`, `INSTALL-PROMPT.md` or `lint.cjs` MUST appear here —
+including a wording fix.
 
-Un installateur qui épingle un commit (`INSTALL.md` §0) doit pouvoir lire ce qui a
-changé entre ce commit et aujourd'hui. C'est la contrepartie de l'exigence qu'on
-impose aux kybers.
+An installer that pins a commit (`INSTALL.md` §0) must be able to read what changed
+between that commit and today. That is the counterpart of the requirement we impose on
+kybers.
 
 ## SPEC-VERSION 2 — 2026-09-16
 
-**Rupture.** Cinq champs qui changent le comportement à l'exécution ont été
-ajoutés ; un consommateur qui les ignore produit un résultat différent sans le
-signaler. Motif : la doctrine d'orchestration du projet `kybernos`
-(`kybernos-parallel`, `kybernos-delegation`) contient cinq mécanismes que le
-format v1 n'avait aucun moyen d'exprimer.
+**Breaking.** Five fields that change behavior at execution have been added; a
+consumer that ignores them produces a different result without reporting it. Rationale:
+the orchestration doctrine of the `kybernos` project (`kybernos-parallel`,
+`kybernos-delegation`) contains five mechanisms that the v1 format had no way to
+express.
 
-### Ajouté — au niveau du kyber
+### Added — at the kyber level
 
-- `elucidation: none | required` — l'orchestrateur DOIT interroger l'humain avant
-  de composer l'équipe. Repris du « HARD MANDATE: interview first » des gabarits de
-  domaines, qui ne lancent jamais d'agents sur des hypothèses.
-- `maxDepth: 0 | 1` — garde de récursion. `depth >= 2` interdit : au-delà, personne
-  ne sait plus qui a lancé quoi ni à qui imputer un échec.
+- `elucidation: none | required` — the orchestrator MUST interview the human before
+  composing the team. Taken from the "HARD MANDATE: interview first" of the domain
+  templates, which never launch agents on assumptions.
+- `maxDepth: 0 | 1` — recursion guard. `depth >= 2` forbidden: beyond that, nobody
+  knows any more who launched what, nor whom to blame for a failure.
 
-### Ajouté — au niveau d'un étage
+### Added — at the level of a stage
 
-- `cap: <entier >= 1>` — plafond d'agents simultanés. Repris du cap dur à 6.
-- `gate: true` — rien en aval ne part avant que cet étage valide. Repris du « zéro
-  lancement spéculatif pré-GO ». Exige des `inputs` **et** un étage en aval.
-- `definitionOfDone: [<commandes>]` — « une DoD non vérifiable par commande n'est
-  pas une DoD ». Repris du contrat de délégation.
+- `cap: <integer >= 1>` — ceiling on simultaneous agents. Taken from the hard cap of 6.
+- `gate: true` — nothing downstream leaves before this stage validates. Taken from
+  "zero speculative launch pre-GO". Requires `inputs` **and** a downstream stage.
+- `definitionOfDone: [<commands>]` — "a DoD not verifiable by command is not a DoD".
+  Taken from the delegation contract.
 
-### Ajouté — provenance
+### Added — provenance
 
-- `provenance.author` **obligatoire** dès `origin: repository` (attribution, §10).
-- `provenance.installHint` — la ligne qui permet au lecteur d'un livrable
-  d'installer le kyber qui l'a produit. Ferme la boucle virale.
+- `provenance.author` **mandatory** as soon as `origin: repository` (attribution, §10).
+- `provenance.installHint` — the line that lets the reader of a deliverable install the
+  kyber that produced it. Closes the viral loop.
 
-### Ajouté — convention
+### Added — convention
 
-- Préfixe `kybernos-contrib-<nom>` pour les kybers tiers (précédent
-  `node-red-contrib-*`). `kybernos.app-contrib-<nom>` reste **rejeté** : le point
-  casse la requête `q=kybernos- in:name`.
-- `contrib-` est un marqueur de **publication**, jamais une partie de l'`id`.
-- Noms réservés : 25 entrées, refusées par le validateur.
-- `lessons.jsonl` **publiable** ; `ledger.jsonl` et `routing.local.json` **jamais**.
+- Prefix `kybernos-contrib-<name>` for third-party kybers (precedent
+  `node-red-contrib-*`). `kybernos.app-contrib-<name>` remains **rejected**: the dot
+  breaks the `q=kybernos- in:name` query.
+- `contrib-` is a **publication** marker, never a part of the `id`.
+- Reserved names: 25 entries, refused by the validator.
+- `lessons.jsonl` **publishable**; `ledger.jsonl` and `routing.local.json` **never**.
 
-### Corrigé — mes propres erreurs
+### Fixed — my own mistakes
 
-- **« Ajouter un champ optionnel n'est pas une rupture » était faux.** Le critère
-  n'est pas *obligatoire ou optionnel*, c'est : *un consommateur qui ignore ce
-  champ produit-il un résultat différent ?* `gate: true` ignoré fait partir
-  l'étage suivant sans attendre la validation. D'où la rupture de version.
-- **« Le renommage casse les `provenance.url` » était faux.** GitHub redirige
-  aussi les dépôts renommés, pas seulement les transférés.
-- **`adversarial: true` hors de `topology: adversarial` n'est plus refusé.** Un
-  pipeline contient légitimement une revue qui réfute l'implémenteur. Refusé
-  seulement sous `pool`.
-- **`role` et `specialty` séparés** dans le ledger. Les confondre fusionnait
-  `auditeur` et `verificateur`, deux métiers opposés, sous une seule clé.
-- **`tools:` est une déclaration, pas une fourniture.** Seul le preset possède les
-  outils.
+- **"Adding an optional field is not a breaking change" was false.** The criterion is
+  not *mandatory or optional*, it is: *does a consumer that ignores this field produce
+  a different result?* `gate: true` ignored makes the next stage depart without waiting
+  for validation. Hence the version break.
+- **"Renaming breaks `provenance.url`s" was false.** GitHub redirects renamed
+  repositories too, not only transferred ones.
+- **`adversarial: true` outside `topology: adversarial` is no longer refused.** A
+  pipeline legitimately contains a review that refutes the implementer. Refused only
+  under `pool`.
+- **`role` and `specialty` separated** in the ledger. Confusing them merged `auditeur`
+  and `verificateur`, two opposed trades, under a single key.
+- **`tools:` is a declaration, not a provision.** Only the preset owns the tools.
 
-### Ajouté — mémoire (`kyber-memory`)
+### Added — memory (`kyber-memory`)
 
-Cinq mécanismes repris de `ruflo`, chacun réglant un défaut constaté :
+Five mechanisms taken from `ruflo`, each fixing an observed defect:
 
-- **Décroissance** (`decayPerHour`, à calculer **à la lecture**) — un score appris
-  une fois ne reste pas vrai.
-- **`attempts` dans le ledger** — un succès après reprise n'est pas un succès
-  propre. Constaté : une ligne disait `success` alors que le même run avait
-  essuyé deux rejets de schéma.
-- **Purge du raisonnement** — aucun texte de réflexion en mémoire.
-- **Cycle de vie des leçons** (`uses`, `lastUsed`) — éviction par utilité réelle,
-  plus par ancienneté.
-- **Transfert inter-kybers à seuil** (`uses >= 3`) — remplace une interdiction
-  trop grossière.
+- **Decay** (`decayPerHour`, to be computed **on read**) — a score learned once does
+  not stay true.
+- **`attempts` in the ledger** — a success after a retry is not a clean success.
+  Observed: a line said `success` while the same run had weathered two schema
+  rejections.
+- **Purge of reasoning** — no reflection text in memory.
+- **Lesson lifecycle** (`uses`, `lastUsed`) — eviction by real usefulness, no longer by
+  age.
+- **Thresholded inter-kyber transfer** (`uses >= 3`) — replaces an overly coarse
+  prohibition.
 
-### Corrigé après un test d'installation réel — 13 échecs constatés
+### Fixed after a real installation test — 13 failures observed
 
-Un installateur a exécuté `INSTALL-PROMPT.md` pour de vrai, sur une cible isolée,
-et documenté treize échecs. Corrections qui en découlent :
+An installer actually executed `INSTALL-PROMPT.md`, on an isolated target, and
+documented thirteen failures. The corrections that follow from them:
 
-- **`INSTALL.md` §0 : l'exemple `provenance` était refusé par le validateur que §0
-  désigne lui-même** — `author` manquait. La règle avait été ajoutée au linter et
-  à `CONVENTION.md` §10, mais l'exemple était resté faux. *Défaut dur, re-testé
-  trois fois par l'installateur.*
-- **§0 : la revue obligatoire ne portait que sur `prompt:`, pas sur `skills:`.** Une
-  skill est le même matériau — du langage naturel adressé à un agent outillé — et
-  le kyber en tire son code le plus exécutable. Une revue partielle laissait passer
-  la moitié de la surface d'attaque. Les critères de refus couvrent les deux.
-- **§0 : le cas « installation locale sans humain » n'était pas tranché.** La règle
-  de confirmation était inconditionnelle et sa seule nuance parlait du cas distant.
-  Remplacé par une table explicite, asymétrique par origine.
-- **§1 : le champ `role:` (spécialité) n'était pas documenté**, alors que
-  `kyber-memory` fait reposer sa clé d'apprentissage sur l'`id`. Le retirer
-  **fusionne `auditeur` et `verificateur` en un seul bras de routage** — le bug que
-  la mémoire documente avoir déjà eu lieu. Ajouté, avec la raison.
-- **§1 : le bloc de format était présenté sans référence à la source de vérité.**
-  Un installateur qui ne lisait que ce résumé produisait un kyber amputé de `cap`,
-  `gate` et `definitionOfDone` — la doctrine entière — sans qu'aucun contrôle ne le
-  signale. Le bloc est désormais explicitement un résumé ; `lint.cjs` fait foi.
-- **§2 point 5 : « dégradation » était défini comme « exigence dure non
-  satisfaite »**, et **aucune** des quatre dégradations réellement constatées n'en
-  était une : `tier` non résolu, mémoire apprise non reportée (six observations
-  perdues), skills résolus seulement sous le preset `kyber` alors que le défaut est
-  `cordis`, `README`/`LICENSE` absents. Redéfini en trois catégories.
-- **§3 Phase 2 :** le prompt d'installation local référençait un dossier
-  d'atelier, ce que `CONVENTION.md` §8 interdit. Reformulé.
-- **`provenance.sourcePath` ajouté** : un kyber local ne pouvait pas enregistrer
-  d'où il venait — la liste fermée refusait le champ, et l'installateur n'avait que
-  deux mauvaises options, inventer un champ ou ne rien noter.
-- **`CONVENTION.md` : un chemin DSH en dur** avait fui dans le texte normatif,
-  alors que `INSTALL.md` §0 promet une spec sans chemin de plateforme.
-- **`lint.cjs` accepte `--dir=`** : un installateur ne pouvait pas valider la copie
-  qu'il venait d'écrire. Il devait fabriquer un harnais de liens symboliques dans
-  `/tmp` pour vérifier son propre travail.
-- **`CONVENTION.md` : la spec s'applique désormais à elle-même** `SPEC-VERSION` et
-  un `CHANGELOG`. Elle imposait aux kybers une version de grammaire et un commit
-  épinglé sans appliquer ni l'une ni l'autre à son propre texte.
+- **`INSTALL.md` §0: the `provenance` example was refused by the very validator §0
+  designates** — `author` was missing. The rule had been added to the linter and to
+  `CONVENTION.md` §10, but the example had stayed wrong. *Hard defect, re-tested three
+  times by the installer.*
+- **§0: the mandatory review covered only `prompt:`, not `skills:`.** A skill is the
+  same material — natural language addressed to a tooled agent — and the kyber gets its
+  most executable code from it. A partial review let half the attack surface through.
+  The refusal criteria cover both.
+- **§0: the case "local installation with no human" was not settled.** The confirmation
+  rule was unconditional and its only nuance spoke of the remote case. Replaced by an
+  explicit table, asymmetric by origin.
+- **§1: the `role:` field (specialty) was not documented**, whereas `kyber-memory`
+  bases its learning key on the `id`. Removing it **merges `auditeur` and
+  `verificateur` into a single routing arm** — the bug that the memory documents as
+  having already happened. Added, with the reason.
+- **§1: the format block was presented without reference to the source of truth.** An
+  installer who read only that summary produced a kyber amputated of `cap`, `gate` and
+  `definitionOfDone` — the entire doctrine — without any check reporting it. The block
+  is now explicitly a summary; `lint.cjs` is authoritative.
+- **§2 point 5: "degradation" was defined as "unsatisfied hard requirement"**, and
+  **none** of the four degradations actually observed was one: unresolved `tier`,
+  learned memory not carried over (six observations lost), skills resolved only under
+  the `kyber` preset whereas the default is `cordis`, missing `README`/`LICENSE`.
+  Redefined into three categories.
+- **§3 Phase 2:** the local installation prompt referenced a workshop folder, which
+  `CONVENTION.md` §8 forbids. Reworded.
+- **`provenance.sourcePath` added**: a local kyber could not record where it came from
+  — the closed list refused the field, and the installer had only two bad options,
+  invent a field or note nothing.
+- **`CONVENTION.md`: a hard-coded DSH path** had leaked into the normative text, whereas
+  `INSTALL.md` §0 promises a spec with no platform path.
+- **`lint.cjs` accepts `--dir=`**: an installer could not validate the copy it had just
+  written. It had to build a harness of symbolic links in `/tmp` to check its own work.
+- **`CONVENTION.md`: the spec now applies to itself** `SPEC-VERSION` and a `CHANGELOG`.
+  It imposed on kybers a grammar version and a pinned commit without applying either to
+  its own text.
 
-**Le défaut de fond, et il est de méthode.** Pendant l'exécution du test, ces
-documents ont été réécrits quatre fois : `CONVENTION.md` de 181 à 405 lignes,
-`lint.cjs` en cinq versions, `INSTALL.md` en deux états — et **à un moment
-`lint.cjs` était cassé** (`ReferenceError: STAGE_FIELDS is not defined`, puis un
-doublon de `const PRESET_SKILLS`), parce que j'écrivais un contrôle avant la
-constante qu'il utilise **sans lancer le validateur entre mes modifications**. Je
-vérifiais à la fin, pas entre les étapes. **Un validateur se lance après chaque
-changement, pas après la série.**
+**The underlying defect, and it is one of method.** During the test run, these documents
+were rewritten four times: `CONVENTION.md` from 181 to 405 lines, `lint.cjs` in five
+versions, `INSTALL.md` in two states — and **at one point `lint.cjs` was broken**
+(`ReferenceError: STAGE_FIELDS is not defined`, then a duplicate `const PRESET_SKILLS`),
+because I was writing a check before the constant it uses **without running the
+validator between my modifications**. I verified at the end, not between the steps. **A
+validator is run after every change, not after the series.**
 
-### Non repris de `ruflo`, et pourquoi
+### Not taken from `ruflo`, and why
 
-- **EWC++** — pour l'affinage de réseaux de neurones. Nous n'en faisons pas.
-- **HNSW / quantisation / rerank** — infrastructure d'échelle. Déclencheur
-  mesurable avant adoption : `lessons.jsonl` > ~500 lignes, ou `ledger.jsonl` > ~5 000.
-- **`@ruvector/emergent-time`, PageHinkley, LearnedWeights** — leur propre ADR
-  cite le README de la dépendance : *« no proven early-warning lead over a fair
-  baseline »*, et les gèle derrière un feature flag.
+- **EWC++** — for fine-tuning neural networks. We do not do that.
+- **HNSW / quantisation / rerank** — scale infrastructure. Measurable trigger before
+  adoption: `lessons.jsonl` > ~500 lines, or `ledger.jsonl` > ~5,000.
+- **`@ruvector/emergent-time`, PageHinkley, LearnedWeights** — their own ADR cites the
+  dependency's README: *"no proven early-warning lead over a fair baseline"*, and
+  freezes them behind a feature flag.
 
 ---
 
 ## SPEC-VERSION 1 — 2026-09-16
 
-Version initiale. Format `kyber.yml` : `id`, `mission`, `topology`, `stages`,
-`roles` (avec `needs`, `provider`, `model`, `prompt`), `memory`, `skills`, `tools`.
-Topologies `pool`, `pipeline`, `adversarial`, `mapreduce`, `loop` ; modes `once`,
-`forEach`, `untilConverged`. Validateur `lint.cjs` ; installation par un agent
-(`INSTALL.md`) ; convention de nommage (`CONVENTION.md`).
+Initial version. `kyber.yml` format: `id`, `mission`, `topology`, `stages`,
+`roles` (with `needs`, `provider`, `model`, `prompt`), `memory`, `skills`, `tools`.
+Topologies `pool`, `pipeline`, `adversarial`, `mapreduce`, `loop`; modes `once`,
+`forEach`, `untilConverged`. Validator `lint.cjs`; installation by an agent
+(`INSTALL.md`); naming convention (`CONVENTION.md`).

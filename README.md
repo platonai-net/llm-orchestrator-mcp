@@ -163,12 +163,11 @@ or bypasses validations.
 node kybers/lint.cjs --dir=$PWD/kybers dev-team
 ```
 
-**Language note**: `kybers/README.md` is in French, as are `INSTALL.md`,
-`CONVENTION.md` and `INSTALL-PROMPT.md` — the install prompt above is the English
-version of the same thing. The English translation of the full spec is not done
-yet.
+**Language note**: the spec is now in English — `kybers/README.md`, `CONVENTION.md`,
+`CHANGELOG.md`, `INSTALL.md` and `INSTALL-PROMPT.md` — and the install prompt above
+is the English version of the same thing.
 
-**Known limits of the format** are documented in [`kybers/README.md`](kybers/README.md#limites-connues-du-format) — nine of them, including one with no answer at all: **there is no way to stop a run or escalate to a human mid-run.**
+**Known limits of the format** are documented in [`kybers/README.md`](kybers/README.md#known-limits-of-the-format) — eleven of them, including one with no answer at all: **there is no way to stop a run or escalate to a human mid-run.**
 
 Hosted endpoints (all configurable):
 

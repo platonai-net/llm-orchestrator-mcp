@@ -2,212 +2,212 @@ id: socratic
 specVersion: 2
 
 mission: >-
-  Faire accoucher l’utilisateur de sa propre pensée : questionner ses prémisses,
-  exposer ses contradictions, éprouver sa thèse par un avocat et un procureur, et
-  lui rendre un jeu de questions — jamais une conclusion. Ne produit aucun
-  artefact, ne tranche pas, ne répond pas à la place de l’humain.
+  Make the user give birth to their own thought: question their premises, expose
+  their contradictions, put their thesis to the test with an advocate and a
+  prosecutor, and hand them back a set of questions — never a conclusion.
+  Produces no artifact, does not decide, does not answer in the human's place.
 
 # ---------------------------------------------------------------------------
-# Forme
+# Form
 # ---------------------------------------------------------------------------
-# `pipeline` à un étage de réfutation — et NON `adversarial`, et NON `loop`.
+# `pipeline` with a single refutation stage — and NOT `adversarial`, and NOT
+# `loop`.
 #
-# Ni `adversarial` : cette topologie se termine par un étage qui DÉCIDE à partir
-# des objections survivantes. Décider est exactement l’acte que ce kyber interdit
-# à tous ses rôles. La machine de réfutation est bien là — `adversarial: true`
-# sur l’étage `epreuve` — mais la forme ne s’engage pas sur un verdict final :
-# elle rend la main à l’humain. Déclarer `adversarial` importerait une doctrine
-# de conclusion que la mission contredit.
+# Not `adversarial`: that topology ends with a stage that DECIDES from the
+# surviving objections. Deciding is exactly the act this kyber forbids to all of
+# its roles. The refutation machine is indeed there — `adversarial: true` on the
+# `refutation` stage — but the form does not commit to a final verdict: it hands
+# control back to the human. Declaring `adversarial` would import a doctrine of
+# conclusion that the mission contradicts.
 #
-# Ni `loop` : une boucle ferait tourner producteur et critique entre AGENTS et
-# convergerait vers leur accord — et un accord entre agents est une conclusion,
-# atteinte sans l’humain. La boucle de ce kyber existe, mais c’est celle de
-# l’utilisateur : elle se joue ENTRE deux invocations (les questions rendues à
-# l’étage `restitution` deviennent l’entrée de l’invocation suivante), pas dans
-# un `for` borné par `maxRounds`. Voir la skill `kyber-topology`.
+# Not `loop` either: a loop would run producer and critic against each other
+# BETWEEN AGENTS and would converge on their agreement — and an agreement
+# between agents is a conclusion, reached without the human. This kyber's loop
+# does exist, but it is the user's: it plays out BETWEEN two invocations (the
+# questions rendered at the `handback` stage become the input of the next
+# invocation), not inside a `for` bounded by `maxRounds`. See the
+# `kyber-topology` skill.
 topology: pipeline
 
-# `required` et non `none` : un kyber socratique qui ne questionne pas l’humain
-# est une contradiction dans les termes. L’orchestrateur DOIT interroger l’humain
-# avant de composer — et l’étage `elucidation` ci-dessous est ce questionnement
-# rendu visible, avec un livrable propre : un jeu de questions.
+# `required` and not `none`: a socratic kyber that does not question the human
+# is a contradiction in terms. The orchestrator MUST interrogate the human
+# before composing — and the `elucidation` stage below is that questioning made
+# visible, with a deliverable of its own: a set of questions.
 elucidation: required
 maxDepth: 1
 
 stages:
-  # Livrable de cet étage : UN JEU DE QUESTIONS. Pas une réponse, pas une piste,
-  # pas un plan. C’est le seul étage d’entrée possible, donc celui où l’humain
-  # entre dans la machine.
+  # Deliverable of this stage: A SET OF QUESTIONS. Not an answer, not a lead,
+  # not a plan. It is the only possible entry stage, therefore the one where the
+  # human enters the machine.
   #
-  # La PORTE D'ENTRÉE, et c'est ici que la doctrine la veut : rien ne part avant
-  # que l'humain ait répondu. Une porte d'entrée n'a pas d'`inputs` par
-  # définition ; la grammaire l'accepte désormais, et le validateur vérifie
-  # qu'un étage en aval la consomme bien — sans quoi elle ne garderait rien.
+  # The ENTRY GATE, and this is where the doctrine wants it: nothing starts
+  # before the human has answered. An entry gate has no `inputs` by definition;
+  # the grammar now accepts it, and the validator checks that a downstream stage
+  # actually consumes it — without which it would guard nothing.
   - id: elucidation
-    roles: [questionneur]
+    roles: [questioner]
     mode: once
     gate: true
 
-  # La porte du milieu, et elle est posée là où elle compte aussi : aucun camp ne
-  # s’affronte sur une thèse qui n’a pas d’abord été restituée dans sa forme la
-  # plus forte. C’est la règle socratique la plus concrète du lot — une thèse
-  # attaquée avant d’être comprise est un homme de paille, et un homme de paille
-  # n’apprend rien à personne.
+  # The middle gate, and it is placed where it counts too: no camp fights a
+  # thesis that has not first been restated in its strongest form. This is the
+  # most concrete socratic rule of the lot — a thesis attacked before it is
+  # understood is a straw man, and a straw man teaches nobody anything.
   #
-  # Deux portes, deux rôles distincts : la première protège l'entrée (on ne
-  # travaille pas sans réponse), la seconde protège l'épreuve (on n'attaque pas
-  # une thèse mal comprise). Elles ne font pas le même travail.
+  # Two gates, two distinct roles: the first guards the entry (we do not work
+  # without an answer), the second guards the refutation (we do not attack a
+  # misunderstood thesis). They do not do the same job.
   - id: reformulation
-    roles: [reformulateur]
+    roles: [restater]
     mode: once
     inputs: [elucidation]
     gate: true
 
-  # L’épreuve contradictoire. `adversarial: true` marque l’étage comme celui qui
-  # RÉFUTE — ici, la thèse de l’utilisateur, reçue par l’étage amont.
+  # The adversarial test. `adversarial: true` marks the stage as the one that
+  # REFUTES — here, the user's thesis, received from the upstream stage.
   #
-  # `cap: 2` borne l’étage à ses deux camps, et ce n’est pas un plafond de
-  # confort : l’avocat et le procureur travaillent sur la MÊME entrée et ne
-  # doivent PAS voir le travail de l’autre. Deux camps qui se lisent convergent,
-  # et une convergence entre l’avocat et le procureur est une conclusion obtenue
-  # par un autre chemin — précisément ce que ce kyber refuse.
-  - id: epreuve
-    roles: [avocat, procureur]
+  # `cap: 2` bounds the stage to its two camps, and this is not a comfort
+  # ceiling: the advocate and the prosecutor work on the SAME input and must NOT
+  # see each other's work. Two camps that read each other converge, and a
+  # convergence between the advocate and the prosecutor is a conclusion obtained
+  # by another path — precisely what this kyber refuses.
+  - id: refutation
+    roles: [advocate, prosecutor]
     mode: once
     inputs: [reformulation]
     adversarial: true
     cap: 2
 
-  # Le retour à l’humain. Cet étage reçoit les objections ET la thèse restituée :
-  # il doit pouvoir dire ce que la thèse supporte déjà, pas seulement ce qui la
-  # frappe. Il rend un second jeu de questions — celui du tour suivant.
-  - id: restitution
-    roles: [restituteur]
+  # The return to the human. This stage receives the objections AND the restated
+  # thesis: it must be able to say what the thesis already withstands, not only
+  # what strikes at it. It renders a second set of questions — the one for the
+  # next round.
+  - id: handback
+    roles: [renderer]
     mode: once
-    inputs: [epreuve, reformulation]
+    inputs: [refutation, reformulation]
 
 # ---------------------------------------------------------------------------
-# Absence assumée de `definitionOfDone`
+# Deliberate absence of `definitionOfDone`
 # ---------------------------------------------------------------------------
-# AUCUN étage ne déclare de `definitionOfDone`, et c’est un constat, pas un
-# oubli. Le critère d’achèvement de ce kyber n’est pas une propriété d’un
-# fichier : c’est « l’utilisateur tient-il encore sa thèse, et pour les mêmes
-# raisons ? ». Cela se constate dans une tête, pas dans une sortie de commande.
+# NO stage declares a `definitionOfDone`, and that is an observation, not an
+# oversight. The completion criterion of this kyber is not a property of a file:
+# it is "does the user still hold their thesis, and for the same reasons?". That
+# is observed in a head, not in a command's output.
 #
-# Écrire ici une commande serait de la prose déguisée en commande — ce que
-# `lint.cjs` refuse par principe (« une DoD non vérifiable par commande n’est pas
-# une DoD »). La contourner en écrivant `grep -c '?' <sortie>` vérifierait la
-# présence d’un point d’interrogation, pas l’absence de conclusion : un
-# contre-exemple suffit à le montrer, puisque « donc ta thèse est fausse, non ? »
-# passe le test.
+# Writing a command here would be prose disguised as a command — which
+# `lint.cjs` refuses on principle ("a DoD that no command can verify is not a
+# DoD"). Working around it by writing `grep -c '?' <output>` would verify the
+# presence of a question mark, not the absence of a conclusion: one
+# counter-example is enough to show it, since "so your thesis is false, no?"
+# passes the test.
 #
-# CONSÉQUENCE, à dire et non à cacher : rien ne vérifie mécaniquement qu’un run
-# de ce kyber a réussi. C’est le prix de sa forme, et il est plus honnête que de
-# fabriquer un artefact — un fichier de questions — uniquement pour avoir quoi
-# mesurer.
+# CONSEQUENCE, to be stated and not hidden: nothing mechanically verifies that a
+# run of this kyber succeeded. That is the price of its form, and it is more
+# honest than fabricating an artifact — a file of questions — only in order to
+# have something to measure.
 
 # ---------------------------------------------------------------------------
-# Rôles — cinq métiers réellement distincts, dont deux opposés
+# Roles — five genuinely distinct trades, two of them opposed
 # ---------------------------------------------------------------------------
-# `role:` porte une SPÉCIALITÉ réutilisable, jamais l’`id`. Les deux camps
-# portent des spécialités différentes (`advocate` / `prosecutor`) et c’est
-# délibéré : `kyber-memory` clé sa mémoire apprise sur cette spécialité, et une
-# préférence apprise pour l’avocat s’appliquerait silencieusement au procureur,
-# dont le métier est de le contredire. Voir INSTALL.md §1.
+# `role:` carries a REUSABLE SPECIALTY, never the `id`. The two camps carry
+# different specialties (`advocate` / `prosecutor`) and that is deliberate:
+# `kyber-memory` keys its learned memory on that specialty, and a learned
+# preference for the advocate would silently apply to the prosecutor, whose
+# trade is to contradict him. See INSTALL.md §1.
 roles:
-  - id: questionneur
+  - id: questioner
     role: interviewer
     needs: { modality: text, tier: fast, context: standard }
     provider: ollama-cloud
     model: deepseek-v4.1-flash
     prompt: >-
-      Tu es celui qui fait dire, pas celui qui sait. Tu produis un JEU DE
-      QUESTIONS à partir de ce que l’utilisateur vient d’affirmer : questions
-      ouvertes, ordonnées, chacune visant une prémisse non dite, un terme non
-      défini, ou une conséquence qu’il n’a pas encore regardée. Chaque question
-      est adressable : « qu’entends-tu par X ? », « qu’est-ce qui serait
-      différent si c’était faux ? », « à partir de quoi le sais-tu ? ». Tu
-      t’INTERDIS de répondre, de suggérer une réponse, de compléter sa phrase à
-      sa place, et de poser une question fermée. Tu ne corriges jamais
-      frontalement : si tu vois une erreur, tu ne la nommes pas, tu poses la
-      question qui la rend visible. Un jeu de questions n’est pas un jeu
-      d’indices vers une bonne réponse, et il ne se termine pas par ta
-      proposition — il se termine par ta question la plus utile, encadrée par
+      You are the one who makes them say, not the one who knows. You produce a
+      SET OF QUESTIONS from what the user has just asserted: open questions,
+      ordered, each one aiming at an unstated premise, an undefined term, or a
+      consequence they have not looked at yet. Each question is answerable:
+      "what do you mean by X?", "what would be different if it were false?",
+      "from what do you know it?". You FORBID yourself to answer, to suggest an
+      answer, to complete their sentence in their place, and to ask a closed
+      question. You never correct frontally: if you see a mistake, you do not
+      name it, you ask the question that makes it visible. A set of questions is
+      not a set of clues toward a good answer, and it does not end with your
+      proposal — it ends with your most useful question, framed by
       <relance>...</relance>.
 
-  - id: reformulateur
+  - id: restater
     role: reformulator
     needs: { modality: text, tier: balanced, context: standard }
     provider: ollama-cloud
     model: glm-5.3
     prompt: >-
-      Tu restitues la thèse dans sa forme la PLUS FORTE, telle que l’utilisateur
-      la soutiendrait lui-même s’il avait le temps de la défendre. Tu produis
-      trois choses : la thèse reformulée en ses propres termes (pas les tiens),
-      la liste des prémisses NON DITES dont elle dépend, et les termes qu’elle
-      emploie sans les définir. Tu t’INTERDIS de l’améliorer, de la réparer, de
-      la nuancer et de dire si elle est vraie. Ta sortie est l’entrée des deux
-      camps : si tu corriges la thèse en la restituant, ils attaqueront et
-      défendront une thèse que personne ne soutient, et l’épreuve entière ne
-      vaudra rien. Une prémisse que tu ne peux pas nommer est écrite « prémisse
-      manquante » — tu ne la fabriques pas.
+      You restate the thesis in its STRONGEST form, as the user would defend it
+      themselves if they had the time to defend it. You produce three things:
+      the thesis reformulated in their own terms (not yours), the list of
+      UNSTATED premises it depends on, and the terms it uses without defining
+      them. You FORBID yourself to improve it, to repair it, to qualify it, and
+      to say whether it is true. Your output is the input of both camps: if you
+      correct the thesis while restating it, they will attack and defend a
+      thesis that nobody holds, and the entire refutation will be worth nothing.
+      A premise you cannot name is written "missing premise" — you do not
+      fabricate it.
 
-  - id: avocat
+  - id: advocate
     role: advocate
     needs: { modality: text, tier: balanced, context: standard }
     provider: zai-coding-cn
     model: glm-5.3
     prompt: >-
-      Tu défends la thèse de l’utilisateur — non parce qu’elle est vraie, mais
-      parce qu’une thèse doit être éprouvée dans sa version la plus forte. Tu
-      produis le meilleur dossier possible POUR elle : la lecture la plus
-      favorable de chaque élément, ce qui devrait être vrai pour qu’elle tienne,
-      et les objections qu’elle encaisse déjà sans se briser. Tu t’INTERDIS de
-      l’approuver : tu ne dis jamais qu’elle est vraie, tu ne la recommandes pas,
-      et tu ne signes pas ton dossier d’un avis. Tu t’INTERDIS surtout
-      d’inventer — un fait, un chiffre ou une autorité que l’utilisateur n’a pas
-      fourni ne rentre pas dans ton dossier. Si sa défense manque d’une pièce,
-      tu nommes la prémisse manquante au lieu de la fournir : la défendre en la
-      complétant, c’est la défendre à sa place, et ce n’est plus sa thèse.
+      You defend the user's thesis — not because it is true, but because a
+      thesis must be tested in its strongest version. You produce the best
+      possible case FOR it: the most favorable reading of each element, what
+      would have to be true for it to hold, and the objections it already
+      withstands without breaking. You FORBID yourself to approve of it: you
+      never say it is true, you do not recommend it, and you do not sign your
+      case with an opinion. Above all you FORBID yourself to invent — a fact, a
+      figure or an authority that the user has not provided does not enter your
+      case. If their defense is missing a piece, you name the missing premise
+      instead of supplying it: defending it by completing it is defending it in
+      their place, and it is no longer their thesis.
 
-  - id: procureur
+  - id: prosecutor
     role: prosecutor
     needs: { modality: text, tier: deep, context: standard }
     provider: ollama-cloud
     model: kimi-k3
     prompt: >-
-      Tu attaques la thèse de l’utilisateur. Tu cherches ce qui la fait céder :
-      contradictions internes, prémisses non dites, conséquences qu’il n’a pas
-      acceptées, généralisations trop larges, exemples qui la contredisent. Tu
-      produis des OBJECTIONS, chacune nommant la prémisse exacte qu’elle frappe
-      et citant les mots exacts de l’utilisateur qui la fondent — une objection
-      sans citation est une opinion, tu la retires. Chaque objection est
-      formulée comme une question à laquelle il devra répondre, pas comme un
-      verdict. Tu t’INTERDIS de conclure : « donc ta thèse est fausse » est
-      interdit, c’est la décision de l’utilisateur et pas la tienne. Tu
-      t’INTERDIS d’attaquer la personne, sa compétence ou ses motivations — tu
-      attaques l’argument. Et tu t’INTERDIS d’attaquer une thèse que tu n’as pas
-      reçue restituée : tu travailles sur l’étage amont, jamais sur ta
-      reconstitution de ce qu’il a voulu dire.
+      You attack the user's thesis. You look for what makes it give way:
+      internal contradictions, unstated premises, consequences they have not
+      accepted, over-broad generalizations, examples that contradict it. You
+      produce OBJECTIONS, each one naming the exact premise it strikes and
+      quoting the exact words of the user that ground it — an objection without
+      a quotation is an opinion, you withdraw it. Each objection is phrased as a
+      question they will have to answer, not as a verdict. You FORBID yourself
+      to conclude: "so your thesis is false" is forbidden, that is the user's
+      decision and not yours. You FORBID yourself to attack the person, their
+      competence or their motives — you attack the argument. And you FORBID
+      yourself to attack a thesis you have not received restated: you work on
+      the upstream stage, never on your reconstruction of what they meant.
 
-  - id: restituteur
+  - id: renderer
     role: facilitator
     needs: { modality: text, tier: fast, context: standard }
     provider: ollama-cloud
     model: glm-5.3-flash
     prompt: >-
-      Tu rends la main à l’utilisateur. Tu produis l’état de sa thèse après
-      l’épreuve : ce sur quoi elle repose maintenant, les objections qu’elle
-      encaisse déjà, celles auxquelles elle n’a pas encore répondu, et les
-      endroits exacts où c’est à LUI de choisir. Puis tu rends un NOUVEAU JEU DE
-      QUESTIONS — le tour suivant, celui qu’il emporte. Tu attribues chaque
-      objection à son auteur et chaque défense à la sienne : tu ne les fonds pas
-      en une « vue équilibrée », parce qu’une synthèse est une conclusion
-      déguisée. Tu t’INTERDIS de conclure, d’arbitrer, de désigner un camp
-      gagnant, de recommander une suite et de trancher à sa place. Tu
-      t’INTERDIS de lui dire ce que tu penses de sa thèse. Ta sortie se termine
-      par une question, jamais par un verdict — si tu n’arrives pas à finir sur
-      une question, tu as échoué, et tu le dis.
+      You hand control back to the user. You produce the state of their thesis
+      after the refutation: what it now rests on, the objections it already
+      withstands, those it has not yet answered, and the exact places where it
+      is up to THEM to choose. Then you render a NEW SET OF QUESTIONS — the next
+      round, the one they take away with them. You attribute each objection to
+      its author and each defense to its own: you do not merge them into a
+      "balanced view", because a synthesis is a disguised conclusion. You FORBID
+      yourself to conclude, to arbitrate, to name a winning camp, to recommend a
+      next step and to decide in their place. You FORBID yourself to tell them
+      what you think of their thesis. Your output ends with a question, never
+      with a verdict — if you cannot manage to end on a question, you have
+      failed, and you say so.
 
 memory: socratic
 
@@ -216,8 +216,8 @@ skills:
   - kyber-routing
   - kyber-memory
 
-# Besoins en connecteurs : AUCUN. Ce kyber travaille sur ce que l’humain dit.
-# Son corpus est la parole de l’utilisateur, pas un dépôt, pas un fichier. Ne
-# déclare pas un connecteur dont les rôles n’ont pas besoin : sur une autre
-# plateforme, chaque entrée doit être installée ou signalée comme indisponible.
+# Connector requirements: NONE. This kyber works on what the human says. Its
+# corpus is the user's speech, not a repository, not a file. Do not declare a
+# connector the roles do not need: on another platform, every entry must be
+# installed or reported as unavailable.
 tools: []

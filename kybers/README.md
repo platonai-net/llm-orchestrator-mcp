@@ -1,139 +1,133 @@
-# Kybers — équipes d'agents portables
+# Kybers — portable agent teams
 
-Un **kyber** est une équipe d'agents spécialisés avec une forme : des rôles, une
-topologie, des exigences de modèles, et une boucle de mémoire. C'est un fichier
-`kyber.yml` — pas un programme.
+A **kyber** is a team of specialist agents with a shape: roles, a topology, model
+requirements, and a memory loop. It is a `kyber.yml` file — not a program.
 
-L'intérêt : **il s'installe en collant un prompt** dans n'importe quel outil
-(Cursor, Opencode, DSH, Claude Code…) qui a accès aux fichiers. Pas de paquet, pas
-de runtime, pas de compte. L'agent qui reçoit le prompt découvre l'architecture de
-son propre outil, résout les exigences de modèles contre ce qui existe réellement
-chez vous, et vous demande confirmation avant d'écrire.
+The point: **it installs by pasting a prompt** into any tool that has file access
+(Cursor, Opencode, DSH, Claude Code…). No package, no runtime, no account. The agent
+that receives the prompt discovers its own tool's architecture, resolves the model
+requirements against what you actually have, and asks you for confirmation before
+writing.
 
-## Les quatre kybers
+## The four kybers
 
-| Kyber | Forme | Ce qu'il fait |
+| Kyber | Shape | What it does |
 |---|---|---|
-| **`dev-team`** | `pipeline`, 8 étages | Une équipe de développement complète : cartographie → cadrage → spec → **porte** → implémentation → test → **revue adverse** → livraison. Cap de 6 agents en parallèle, DoD exécutables, zéro lancement spéculatif avant le GO. |
-| **`audit`** | `adversarial`, 4 étages | Cartographie → constats (itérés, cap 6) → **réfutation** → rapport. Sa valeur : des constats qui résistent à la réfutation, et les constats tombés partent en annexe au lieu d'être effacés. |
-| **`veille`** | `mapreduce`, 4 étages | **Interroge d'abord** (10 questions, obligatoire), puis collecte sur des sources officielles *et* des signaux faibles, trie le signal du bruit, écrit un digest daté et cité. |
-| **`socratic`** | `pipeline`, 4 étages | Ne donne **jamais** la réponse. Questionne, reformule, puis fait s'affronter avocat et procureur de votre propre thèse. Le livrable est une pensée mieux formée, pas un artefact. |
+| **`dev-team`** | `pipeline`, 8 stages | A full software team: map → frame → spec → **gate** → implement → test → **adversarial review** → deliver. Cap of 6 parallel agents, executable DoDs, zero speculative launch before GO. |
+| **`audit`** | `adversarial`, 4 stages | Map → findings (iterated, cap 6) → **refutation** → report. Its value: findings that survive refutation, and the ones that fall go to an appendix instead of being erased. |
+| **`veille`** | `mapreduce`, 4 stages | **Interviews you first** (10 questions, mandatory), then collects from official sources *and* weak signals, separates signal from noise, writes a dated and cited digest. |
+| **`socratic`** | `pipeline`, 4 stages | **Never** gives the answer. Questions, restates, then sets an advocate and a prosecutor against your own thesis. The deliverable is a better-formed thought, not an artifact. |
 
-## Installer
+## Install
 
-Copiez ce bloc dans votre agent :
+Copy this block into your agent:
 
 ```text
-Installe le kyber « dev-team » dans mon outil.
+Install the kyber "dev-team" into my tool.
 
-Spec générale : https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/INSTALL.md
-                https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/CONVENTION.md
-Source du kyber : https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/dev-team/kyber.yml
-                  → lis INSTALL.md ET CONVENTION.md en entier avant d'agir.
-Si tu ne peux pas lire la spec, ARRÊTE-TOI et dis-le. Ne devine pas le format.
+General spec : https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/INSTALL.md
+               https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/CONVENTION.md
+Kyber source : https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/dev-team/kyber.yml
+               → read INSTALL.md AND CONVENTION.md in full before acting.
+If you cannot read the spec, STOP and say so. Do not guess the format.
 
-Applique INSTALL.md §0 à §5. Tu dois, dans cet ordre :
+Apply INSTALL.md §0 to §5. You must, in this order:
 
-1. Découvrir l'architecture de MON outil — où vivent les agents, les skills, les
-   connecteurs, la mémoire — EN INSPECTANT. Pas de mémoire, pas de supposition.
-2. Résoudre le champ `needs` de chaque rôle contre les modèles RÉELLEMENT
-   disponibles chez moi, et me montrer la table rôle → modèle.
-3. M'afficher AVANT D'ÉCRIRE QUOI QUE CE SOIT : chaque `prompt:` de rôle EN
-   ENTIER, chaque skill EN ENTIER, la table de résolution, et le sort de chaque
-   étage de topologie.
-4. Obtenir ma confirmation explicite. Pas d'installation automatique.
-5. Écrire `provenance` avec l'URL et le COMMIT — jamais une branche.
-6. Me dire à la fin ce que tu as installé, et ce que tu as DÉGRADÉ.
+1. Discover MY tool's architecture — where agents, skills, connectors and memory
+   live — BY INSPECTING. No guessing, no relying on memory.
+2. Resolve each role's `needs` against the models I ACTUALLY have, and show me the
+   role → model table.
+3. Show me BEFORE WRITING ANYTHING: every role `prompt:` IN FULL, every skill IN
+   FULL, the resolution table, and the fate of each topology stage.
+4. Get my explicit confirmation. No automatic install.
+5. Write `provenance` with the URL and the COMMIT — never a branch.
+6. Tell me at the end what you installed, and what you DEGRADED.
 ```
 
-Remplacez `dev-team` par `audit`, `veille` ou `socratic`. Les variantes locale et
-« publier mon kyber » sont dans [`INSTALL-PROMPT.md`](INSTALL-PROMPT.md).
+Replace `dev-team` with `audit`, `veille` or `socratic`. The local variant and the
+"publish my kyber" variant are in [`INSTALL-PROMPT.md`](INSTALL-PROMPT.md).
 
-> **Pourquoi montrer les prompts en entier ?** Un kyber n'est pas de la
-> configuration, c'est du **langage naturel adressé à un agent outillé**. Il peut
-> contenir n'importe quoi. `INSTALL.md` §0 impose de tout afficher avant d'écrire,
-> et de refuser sans négocier un contenu qui exfiltre, exécute à distance ou
-> contourne les validations.
+> **Why show the prompts in full?** A kyber is not configuration, it is **natural
+> language addressed to a tooled agent**. It can contain anything. `INSTALL.md` §0
+> requires showing everything before writing, and refusing outright any content that
+> exfiltrates, executes remotely or bypasses validations.
 
-## Valider
+## Validate
 
 ```bash
-node kybers/lint.cjs --dir=$PWD/kybers          # tous
-node kybers/lint.cjs --dir=$PWD/kybers dev-team # un seul
+node kybers/lint.cjs --dir=$PWD/kybers          # all of them
+node kybers/lint.cjs --dir=$PWD/kybers dev-team # a single one
 ```
 
-Le validateur vérifie la cohérence du fichier : `id` = dossier, version de spec,
-rôles atteignables, absence de cycle, portes qui gardent réellement quelque chose,
-`definitionOfDone` non vide, noms réservés, et — s'il trouve un `.probe.json` — la
-disponibilité réelle des modèles déclarés.
+The validator checks the file's internal consistency: `id` = folder, spec version,
+reachable roles, absence of cycles, gates that actually guard something,
+`definitionOfDone` non-empty, reserved names, and — if it finds a `.probe.json` — the
+real availability of the declared models.
 
-**Ce qu'il ne garantit pas** : que l'exécution respecte le fichier. Il valide un
-texte, pas un comportement.
+**What it does not guarantee**: that execution respects the file. It validates a text,
+not a behavior.
 
-## Crédit
+## Credit
 
-Les prompts de rôles, la doctrine de parallélisme (`cap` dur à 6, zéro lancement
-spéculatif avant GO, definition of done vérifiable par commande, garde de
-récursion) et les gabarits de domaines sont **adaptés du projet interne
-`kybernos`** — traduits, condensés, et recopiés dans chaque fichier plutôt que
-liés.
+The role prompts, the parallelism doctrine (hard `cap` of 6, zero speculative launch
+before GO, definition of done verifiable by command, recursion guard) and the domain
+templates are **adapted from the internal `kybernos` project** — translated,
+condensed, and copied into each file rather than linked.
 
-**Pourquoi pas de lien** : le dépôt source n'est pas public à ce jour, donc une
-URL renverrait 404. Un crédit qui ne résout pas est pire que pas de crédit — le
-lecteur ne peut pas vérifier l'origine, et ça ressemble à une revendication en
-l'air. Le lien sera rétabli si la source est publiée.
+**Why no link**: the source repository is not public as of today, so a URL would return
+404. A credit that does not resolve is worse than no credit — the reader cannot verify
+the origin, and it looks like a claim floating in the air. The link will be restored if
+the source is published.
 
-## Limites connues du format
+## Known limits of the format
 
-Trois kybers écrits indépendamment ont convergé sur les mêmes manques. Ils sont
-réels et non corrigés — les taire serait pire que les documenter.
+Four kybers written independently converged on the same gaps. They are real and
+uncorrected — keeping quiet about them would be worse than documenting them.
 
-> ### Comment ces limites ont été trouvées
+> ### How these limits were found
 >
-> Les quatre kybers ont été écrits **par des agents séparés, sans se voir**, à
-> partir du même format et de la même doctrine. Trois d'entre eux ont buté
-> **indépendamment** sur exactement les mêmes défauts :
+> The four kybers were written **by separate agents, without seeing each other**,
+> starting from the same format and the same doctrine. Three of them ran into
+> **independently** on exactly the same defects:
 >
-> | Défaut | `dev-team` | `veille` | `audit` | `socratic` |
+> | Defect | `dev-team` | `veille` | `audit` | `socratic` |
 > |---|:---:|:---:|:---:|:---:|
-> | Une porte ne peut pas garder l'entrée | ✓ | ✓ | ✓ | ✓ |
-> | `inputs` ne sait qu'ajouter, jamais retirer | ✓ | | ✓ | |
-> | DoD à deux niveaux sans logement | ✓ | | ✓ | ✓ |
-> | Aucun mécanisme d'arrêt ni d'escalade | ✓ | | ✓ | |
-> | `role:` non vérifié par le validateur | ✓ | ✓ | ✓ | |
-> | Contrat d'artefacts à inventer | ✓ | ✓ | ✓ | |
+> | A gate cannot guard the entry point | ✓ | ✓ | ✓ | ✓ |
+> | `inputs` only knows how to add, never remove | ✓ | | ✓ | |
+> | Two-level DoD with nowhere to live | ✓ | | ✓ | ✓ |
+> | No stop or escalation mechanism | ✓ | | ✓ | |
+> | `role:` not checked by the validator | ✓ | ✓ | ✓ | |
+> | Artifact contract left to be invented | ✓ | ✓ | ✓ | |
 >
-> **Quatre agents sur quatre** ont buté sur la porte d'entrée, et chacun a réagi
-> différemment — l'un a déplacé la porte, l'autre l'a tue, deux l'ont documentée
-> comme un renoncement. Aucun n'a inventé de champ. C'est ce qui a permis de
-> trancher entre « le format a raison et l'auteur se trompe » et « le format a
-> tort » : quand quatre lecteurs indépendants se heurtent au même mur, c'est le
-> mur.
+> **Four agents out of four** ran into the entry-point gate, and each reacted
+> differently — one moved the gate, another killed it, two documented it as a
+> renunciation. None invented a field. That is what made it possible to decide between
+> "the format is right and the author is wrong" and "the format is wrong": when four
+> independent readers hit the same wall, it is the wall.
 >
-> Les trois premiers défauts de ce tableau sont **corrigés depuis**. Les autres
-> sont ouverts.
+> The first three defects in that table are **fixed since**. The rest are open.
 
-| Limite | Conséquence |
+| Limit | Consequence |
 |---|---|
-| **Pas d'arête arrière** | Le verdict ternaire de la doctrine (GO / **AMEND** / NO-GO), où AMEND renvoie le travail en arrière, est inexprimable : les `inputs` ne peuvent citer qu'un étage antérieur. La boucle de correction n'existe qu'en prose. |
-| **`inputs` ne sait qu'ajouter** | L'invariant qui fonde la revue adverse — « ne reçois jamais le récit de l'implémenteur, juge sur la spec et le diff » — est une **soustraction** de contexte. `inputs` ne sait pas retirer. |
-| **Une porte ne peut pas être terminale** | La porte de production (« rien ne part sans validation humaine ») est la dernière. `gate` exige un étage en aval. *(Les portes d'entrée sont désormais acceptées.)* |
-| **DoD à un seul niveau** | La doctrine distingue `must-pass` et `advisory` (critères humains). Le format n'a qu'une liste plate, donc l'advisory finit en prose — exactement la forme non vérifiable que le champ combat. |
-| **`elucidation` n'est lu par rien** | Le champ dit *qu'il faut* interroger l'humain, jamais **quoi** demander ni **où** mettre les réponses. Aucune skill ne le lit : un orchestrateur qui l'ignore compose l'équipe sans rien demander, **et ne le signale pas**. |
-| **`cap` n'a pas de sémantique tranchée** | Quota par vague ou plafond en vol ? Deux lectures, deux comportements. Le disjoncteur de saturation (cap 6 → 3 après erreurs) exige un plafond **variable**, que le champ n'accepte pas. |
-| **Pas de contrat d'artefacts** | Aucun champ ne dit où un étage écrit ses sorties. Deux kybers ont inventé `$RUN/…` séparément, avec des conventions différentes. C'est leur principale fragilité. |
-| **Pas d'état inter-runs** | `memory:` ne porte que des scores de routage. « Ce qui a changé depuis le dernier cycle » — le cœur d'une veille — n'a nulle part où être rangé. |
-| **Pas d'enveloppe de ressources** | La doctrine impose un budget en minutes par contrat, avec des plafonds par rôle. Rien de déclarable ; `maxDepth` borne la cascade, pas le coût. |
-| **Aucun mécanisme d'arrêt ni d'escalade** | C'est le manque le plus grave. La doctrine définit un disjoncteur (« > 30 % de tâches bloquées → arrêt du run + escalade humaine ») et une chaîne d'escalade à déclencheurs observés (même signature d'erreur 2×, 3 tentatives sans progrès). Aucun champ ne permet d'**arrêter un run ni d'interroger l'humain pendant qu'il tourne** — `elucidation` interroge *avant* de composer, jamais pendant. Un kyber réel a dû dégrader la règle en simple mention dans le rapport : le « passer au suivant » et l'escalade ont disparu. **Toutes les règles qui empêchent de boucler indéfiniment atterrissent ici.** |
-| **Les dépendances binaires ne sont déclarables nulle part** | Des `definitionOfDone` réelles s'appuient sur `jq` et `git`. `tools:` sert aux connecteurs, pas aux exécutables : rien ne dit qu'un étage refuse de tourner sans `jq`, ni où le déclarer. Une DoD peut donc être inapplicable sur la machine cible **sans que rien ne le signale à l'installation**. |
+| **No back edge** | The doctrine's ternary verdict (GO / **AMEND** / NO-GO), where AMEND sends the work backwards, is inexpressible: `inputs` can only cite an earlier stage. The correction loop exists only in prose. |
+| **`inputs` only knows how to add** | The invariant that founds adversarial review — "never receive the implementer's account, judge on the spec and the diff" — is a **subtraction** of context. `inputs` does not know how to remove. |
+| **A gate cannot be terminal** | The production gate ("nothing leaves without human validation") is the last one. `gate` requires a downstream stage. *(Entry-point gates are now accepted.)* |
+| **Single-level DoD** | The doctrine distinguishes `must-pass` and `advisory` (human criteria). The format has only a flat list, so the advisory ends up in prose — exactly the non-verifiable form the field fights. |
+| **`elucidation` is read by nothing** | The field says *that* the human must be interviewed, never **what** to ask nor **where** to put the answers. No skill reads it: an orchestrator that ignores it composes the team without asking anything, **and does not report it**. |
+| **`cap` has no settled semantics** | Quota per wave or ceiling in flight? Two readings, two behaviors. The saturation circuit breaker (cap 6 → 3 after errors) requires a **variable** ceiling, which the field does not accept. |
+| **No artifact contract** | No field says where a stage writes its outputs. Two kybers invented `$RUN/…` separately, with different conventions. That is their main fragility. |
+| **No inter-run state** | `memory:` carries only routing scores. "What has changed since the last cycle" — the heart of a veille — has nowhere to be stored. |
+| **No resource envelope** | The doctrine imposes a budget in minutes per contract, with per-role ceilings. Nothing declarable; `maxDepth` bounds the cascade, not the cost. |
+| **No stop or escalation mechanism** | This is the most serious gap. The doctrine defines a circuit breaker ("> 30% of tasks blocked → stop the run + human escalation") and an escalation chain with observed triggers (same error signature 2×, 3 attempts without progress). No field allows **stopping a run or consulting the human while it runs** — `elucidation` interviews *before* composing, never during. A real kyber had to degrade the rule into a mere mention in the report: the "move on to the next one" and the escalation disappeared. **Every rule that prevents looping indefinitely lands here.** |
+| **Binary dependencies are declarable nowhere** | Real `definitionOfDone`s rely on `jq` and `git`. `tools:` serves connectors, not executables: nothing says that a stage refuses to run without `jq`, nor where to declare it. A DoD can therefore be inapplicable on the target machine **without anything reporting it at installation**. |
 
-## État de vérification
+## Verification status
 
-Les quatre fichiers passent `lint.cjs`. `audit` et `veille` ont en outre **exercé
-leurs `definitionOfDone` contre des fixtures** — 27 commandes au total, chacune
-vérifiée comme discriminante (source absente → échec, arbre pollué → échec,
-constat réfuté cité dans le corps → échec).
+The four files pass `lint.cjs`. `audit` and `veille` have in addition **exercised their
+`definitionOfDone`s against fixtures** — 23 commands in total (8 + 15), each verified as
+discriminating (source absent → failure, polluted tree → failure, refuted finding cited
+in the body → failure).
 
-**Aucun des quatre n'a été exécuté de bout en bout** au sens d'`INSTALL.md` §2.4.
-Une version antérieure d'`audit` a réellement tourné sur DSH (4 rôles, 0 échec
-technique, un constat réfuté puis écarté en annexe), mais pas ces fichiers-ci.
+**None of the four has been executed end to end** in the sense of `INSTALL.md` §2.4. An
+earlier version of `audit` did actually run on DSH (4 roles, 0 technical failure, one
+finding refuted and then set aside in an appendix), but not these files.
