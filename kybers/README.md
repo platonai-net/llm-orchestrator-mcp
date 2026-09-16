@@ -60,12 +60,25 @@ node kybers/lint.cjs --dir=$PWD/kybers dev-team # a single one
 ```
 
 The validator checks the file's internal consistency: `id` = folder, spec version,
-reachable roles, absence of cycles, gates that actually guard something,
-`definitionOfDone` non-empty, reserved names, and — if it finds a `.probe.json` — the
-real availability of the declared models.
+reachable roles, absence of cycles, gate placement (entry and terminal gates are both
+legal, and each draws a warning), `definitionOfDone` non-empty, reserved names, and —
+if it finds a `.probe.json` — the state of the declared models. With a probe file it
+keeps three states distinct: probed and answering (`OK`), probed and silent
+(`INDISPONIBLE`), and **never probed** (`DÉCLARÉ` — declared is not served, so it is
+never reported as working).
 
 **What it does not guarantee**: that execution respects the file. It validates a text,
 not a behavior.
+
+**And a green `definitionOfDone` proves the form of the contract, never its truth.**
+The commands check that files exist, markers are present, counts match and a status
+line reads `200`; they cannot check that the content is true, that a human was
+interviewed, or that a receipt `200 <sha256> …` attests a real fetch rather than
+asserting one. Observed in the one real end-to-end run of `veille`: 15/15 commands
+passed while no human was ever interviewed (2 of 10 answer lines read
+`OPEN — no answer received`) and only 3 of 7 collection receipts reproduced their
+`sha256` on independent re-fetch. A `PASS` is a filter on shape, not evidence of
+content.
 
 ## Credit
 
@@ -105,15 +118,18 @@ uncorrected — keeping quiet about them would be worse than documenting them.
 > "the format is right and the author is wrong" and "the format is wrong": when four
 > independent readers hit the same wall, it is the wall.
 >
-> The first three defects in that table are **fixed since**. The rest are open.
+> The entry-point gate and the unchecked `role:` in that table are **fixed since**:
+> `lint.cjs` now legalises an entry-stage gate and emits only a warning, and it now
+> validates `role:`. The `inputs` subtraction, the two-level DoD, escalation and the
+> artifact contract remain open.
 
 | Limit | Consequence |
 |---|---|
 | **No back edge** | The doctrine's ternary verdict (GO / **AMEND** / NO-GO), where AMEND sends the work backwards, is inexpressible: `inputs` can only cite an earlier stage. The correction loop exists only in prose. |
 | **`inputs` only knows how to add** | The invariant that founds adversarial review — "never receive the implementer's account, judge on the spec and the diff" — is a **subtraction** of context. `inputs` does not know how to remove. |
-| **A gate cannot be terminal** | The production gate ("nothing leaves without human validation") is the last one. `gate` requires a downstream stage. *(Entry-point gates are now accepted.)* |
+| **A gate is intent, not enforcement** | The production gate ("nothing leaves without human validation") is the last one, and `lint.cjs` accepts it: entry and terminal gates are both legal and each draws only a warning. But no platform primitive makes a downstream stage wait — `gate: true` records a doctrine the orchestrator must honour; it cannot make it. |
 | **Single-level DoD** | The doctrine distinguishes `must-pass` and `advisory` (human criteria). The format has only a flat list, so the advisory ends up in prose — exactly the non-verifiable form the field fights. |
-| **`elucidation` is read by nothing** | The field says *that* the human must be interviewed, never **what** to ask nor **where** to put the answers. No skill reads it: an orchestrator that ignores it composes the team without asking anything, **and does not report it**. |
+| **`elucidation` is read by nothing** | The field says *that* the human must be interviewed, never **what** to ask nor **where** to put the answers, and no skill reads it. It also cannot be enforced mid-run: a fan-out script's globals are only launch primitives, progress narration and the immutable `args` — no pause, escalate, abort or approval primitive exists — so the interview MUST happen in conversation **before** the workflow starts, with the answers written to a file the first stage reads. An orchestrator that skips it composes on assumptions, **does not report it**, and the DoD still passes. |
 | **`cap` has no settled semantics** | Quota per wave or ceiling in flight? Two readings, two behaviors. The saturation circuit breaker (cap 6 → 3 after errors) requires a **variable** ceiling, which the field does not accept. |
 | **No artifact contract** | No field says where a stage writes its outputs. Two kybers invented `$RUN/…` separately, with different conventions. That is their main fragility. |
 | **No inter-run state** | `memory:` carries only routing scores. "What has changed since the last cycle" — the heart of a veille — has nowhere to be stored. |

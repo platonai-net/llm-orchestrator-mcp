@@ -19,7 +19,7 @@ Otherwise they are unpinnable: nothing says which version of the grammar a
 | Document | Versioned by |
 |---|---|
 | the format (`kyber.yml`) | `specVersion:` in each file |
-| `CONVENTION.md`, `INSTALL.md`, `INSTALL-PROMPT.md` | `SPEC-VERSION` + `CHANGELOG.md` |
+| `CONVENTION.md`, `INSTALL.md`, `INSTALL-PROMPT.md` | the `SPEC-VERSION` heading in `CHANGELOG.md` (there is no separate artifact of that name) |
 | `lint.cjs` | follows `SPEC_VERSION`, and its change MUST appear in the CHANGELOG |
 
 **Any modification of these documents MUST be accompanied by an entry in
@@ -213,6 +213,46 @@ search by name     →  candidates
 
 None of these steps MUST be skipped, and **none MUST write to disk**. Discovery
 produces a list; installation is a human decision (`INSTALL.md` §0).
+
+### `provider`/`model` are hints. `needs` is the contract.
+
+A published kyber records, per role, the binding its author resolved (`provider`,
+`model`) and the requirement the role actually has (`needs`). Discovery MUST NOT read
+the binding as a target or a recommendation for the installing platform: the same id
+(`ollama-cloud/glm-5.3`) means nothing elsewhere, and an installer that copies it has
+installed a name, not a capability.
+
+The resolver on the installing platform MUST satisfy `needs`. It MAY bind a different
+model, provided the chosen model satisfies `needs`; the declared binding is the
+PREFERRED choice, used when it satisfies `needs` and no learned preference overrides it.
+`INSTALL.md` §1 owns the field definition and states the hard case: where the platform
+cannot MEASURE a need — no price, no latency, no throughput, hence no resolvable
+`tier` — the hint becomes authoritative for that role and **no learning is possible for
+it**. The publication tier of §6 says who published a kyber, never which model works on
+your machine.
+
+Consequence for memory: the unit of comparison is the **arm** — one role bound to one
+model — never the kyber. Two runs of the same arm are comparable; learning happens by
+comparing *different arms of the same role*. A kyber that declares one model per role
+produces one arm per role, so at any sample size there is no alternative to compare
+against and no routing decision can ever be demonstrated.
+
+### What validation does not prove — two limits
+
+`lint.cjs` proves the file's structure: `id` = folder, spec version, reachable roles,
+no cycle, enum values, gates, non-empty `definitionOfDone`. It proves nothing about
+execution, and it MUST NOT be reported as if it did.
+
+`definitionOfDone` (the stage field, described in `INSTALL.md` §1) goes one step
+further and no further: **a `PASS` proves the FORM of the contract, never its truth.**
+Its commands check that files exist, markers are present, counts match and a status line
+reads `200`. They cannot check that a quotation is faithful, that a receipt
+`200 <sha256> …` attests a real fetch rather than asserting one, or that a human
+answered an interview. **Observed** in a real run of `veille`: 15/15 commands passed
+while no human was ever interviewed (2 of 10 answer lines read
+`OPEN — no answer received`) and, on independent re-fetch, only 3 of 7 collection
+receipts reproduced their `sha256`. A green validation and a green DoD are consistency,
+not truth: a filter on shape, never evidence of content.
 
 ## 6. Trust tiers
 
@@ -429,6 +469,11 @@ Three constraints, and each one has a reason:
 the instruction that lets the reader install **the kyber that has just produced the
 document they are reading**.
 
+**The hint pins a COMMIT, never a branch.** §0's reason applies to `installHint` word
+for word: a branch moves, so a hint pointing at one stops designating what the author
+installed the day the signature was written. The commit in the URL is the
+`provenance.commit` recorded at installation; use it verbatim.
+
 This is the most important point in this entire document. Without it, sharing a report
 shares a result. With it, **sharing a report distributes the kyber**. Every shared
 report is an installable invitation, and the person who follows it in turn becomes a
@@ -437,8 +482,12 @@ user who will produce shareable reports.
 ```
 — kyber audit · by @miled
   to install it, paste this into your agent:
-  https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main/kybers/INSTALL-PROMPT.md
+  https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/<commit>/kybers/INSTALL-PROMPT.md
 ```
+
+`<commit>` is the full SHA from `provenance.commit` — **not** `main`, not a tag. The
+same rule governs the `provenance.url` of §0 and the third-party installation of §9:
+both reference the commit.
 
 **Why this is not a vanity metric.** The signature produces a measurable and honest
 effect: reading a report, you see who designed the team. It is the only quality signal

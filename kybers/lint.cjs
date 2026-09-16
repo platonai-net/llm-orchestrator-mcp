@@ -125,7 +125,10 @@ const RESERVED_NAMES = [
 /* Résultats de sonde : DÉCLARÉ n'est pas SERVI. Un modèle peut être présent dans
    settings.yaml et ne jamais répondre — constaté sur zai-coding-cn/glm-5v-turbo,
    qui est justement le seul à déclarer une grande fenêtre de contexte. Sans ce
-   fichier, le lint ne peut juger que des déclarations, et il le dira. */
+   fichier, le lint ne peut juger que des déclarations, et il le dira.
+   Avec ce fichier, trois états doivent rester distincts : sondé et répondant,
+   sondé et muet, JAMAIS SONDÉ. Voir classify() — compter un non-sondé comme
+   vivant faisait imprimer OK à un modèle que personne n'avait exercé. */
 function loadProbes() {
   const f = path.join(KYBERS_DIR, ".probe.json");
   if (!fs.existsSync(f)) return null;
@@ -139,29 +142,51 @@ function loadProbes() {
   }
 }
 
+/* Trois états, jamais deux. « Pas sondé-échoué » n'est pas « vivant » : un
+   modèle absent de `.probe.json` n'a été exercé par personne, et le présenter
+   comme disponible est exactement la confusion « déclaré n'est pas servi » que
+   `INSTALL.md` §3 dit centrale. Un candidat jamais sondé est donc rapporté
+   DÉCLARÉ — non prouvé — même lorsqu'un autre candidat, lui, a répondu. */
 function classify(candidates, probes, need) {
   const declared = candidates.map((m) => m.provider + "/" + m.id);
   if (probes) {
-    const alive = candidates.filter((m) => {
+    const proven = [];
+    const failed = [];
+    const unproven = [];
+    for (const m of candidates) {
       const p = probes.map.get(m.provider + "|" + m.id);
-      return !(p && p.ok === false);
-    });
-    const dead = candidates.filter((m) => {
-      const p = probes.map.get(m.provider + "|" + m.id);
-      return p && p.ok === false;
-    });
-    if (alive.length) {
-      return { need, status: "OK", how: alive.map((m) => m.provider + "/" + m.id).join(", ") };
+      if (p && p.ok === true) proven.push(m);
+      else if (p && p.ok === false) failed.push(m);
+      else unproven.push(m); /* absent de .probe.json, ou verdict non exploitable */
     }
-    if (dead.length) {
+    const name = (ms) => ms.map((m) => m.provider + "/" + m.id).join(", ");
+    if (proven.length) {
+      return {
+        need,
+        status: "OK",
+        how:
+          name(proven) +
+          " — SONDÉ(S) ET RÉPONDANT(S)" +
+          (unproven.length
+            ? ` ; ${unproven.length} autre(s) déclaré(s) NON SONDÉ(S), donc non prouvé(s) : ${name(unproven)}`
+            : ""),
+      };
+    }
+    if (failed.length) {
       return {
         need,
         status: "INDISPONIBLE",
         how:
           "candidat(s) déclaré(s) " +
-          dead.map((m) => m.provider + "/" + m.id).join(", ") +
-          " — SONDÉ(S) ET SANS RÉPONSE. Déclaré n'est pas servi.",
+          name(failed) +
+          " — SONDÉ(S) ET SANS RÉPONSE. Déclaré n'est pas servi." +
+          (unproven.length
+            ? ` ${unproven.length} autre(s) NON SONDÉ(S), donc non prouvé(s) : ${name(unproven)}`
+            : ""),
       };
+    }
+    if (unproven.length) {
+      return { need, status: "DÉCLARÉ", how: name(unproven) + " — non sondé, donc non prouvé" };
     }
   }
   if (declared.length) {

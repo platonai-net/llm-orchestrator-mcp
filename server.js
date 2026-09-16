@@ -21,7 +21,7 @@ let config = {
   probePrompt: "ping",
   selection: { strategy: "score", weights: { health: 40, latency: 30, context: 20, quality: 10 } },
   routing: {},
-  orchestratorSystemPrompt: "Tu es l'orchestrateur.",
+  orchestratorSystemPrompt: "You are the orchestrator.",
 };
 for (const p of CONFIG_PATHS) {
   try {

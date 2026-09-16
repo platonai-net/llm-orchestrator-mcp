@@ -1,47 +1,45 @@
 #!/usr/bin/env node
 /**
- * kybers/memory.cjs — mémoire déterministe d'un kyber.
+ * kybers/memory.cjs — deterministic memory for a kyber.
  *
- * POURQUOI CE FICHIER EXISTE
+ * WHY THIS FILE EXISTS
  *
- * La skill `kyber-memory` décrivait un protocole : après chaque exécution, le
- * modèle écrivait une ligne de journal, calculait une moyenne pondérée, et
- * relisait le fichier au run suivant. Mesure sur données réelles : 11 lignes,
- * 9 bras, TOUS à `ewma = 1`, zéro échec — donc le seuil de marge ne pouvait
- * mathématiquement jamais se déclencher. **La moitié routage de
- * l'auto-apprentissage n'avait jamais produit une seule décision.**
+ * The `kyber-memory` skill described a protocol: after each run, the model wrote
+ * a journal line, computed a weighted average, and re-read the file on the next
+ * run. Measured on real data: 11 lines, 9 arms, ALL at `ewma = 1`, zero
+ * failures — so the margin threshold could mathematically never fire. **The
+ * routing half of the self-learning loop had never produced a single decision.**
  *
- * La cause n'est pas le protocole, c'est qui l'exécute : demander à un modèle de
- * calculer une EWMA en prose, c'est lui demander d'être une calculatrice fiable
- * sans pouvoir vérifier son résultat. L'arithmétique doit être du code ; le
- * jugement (« l'attente a-t-elle été contredite ? ») doit rester au modèle.
+ * The cause is not the protocol, it is who executes it: asking a model to
+ * compute an EWMA in prose is asking it to be a reliable calculator with no way
+ * to verify its result. Arithmetic must be code; judgement ("was the
+ * expectation contradicted?") must stay with the model.
  *
- * CE QUI EST RÉUTILISÉ, ET CE QUI NE L'EST PAS
+ * WHAT IS REUSED, AND WHAT IS NOT
  *
- * Réutilisé depuis `../memory.js` (déjà testé, 54 tests passent) :
- *   EWMA_ALPHA = 0.2, EWMA_MAX_DELTA = 0.15 — mêmes constantes, mêmes valeurs
- *   LESSON_MAX_CHARS = 500, LESSONS_MAX_COUNT = 50 — mêmes plafonds
+ * Reused from `../memory.js` (already tested, 54 tests pass):
+ *   EWMA_ALPHA = 0.2, EWMA_MAX_DELTA = 0.15 — same constants, same values
+ *   LESSON_MAX_CHARS = 500, LESSONS_MAX_COUNT = 50 — same caps
  *
- * NON réutilisé malgré une signature qui y ressemble : `ewmaUpdate`. Elle prend
- * un `outcome` BOOLÉEN (`target = outcome ? 1 : 0`) ; lui passer le 0.5 du succès
- * après reprise le convertit en 1, donc en crédit plein. Voir `ewmaThreeValued`
- * ci-dessous — le bug a réellement eu lieu et il était silencieux.
+ * NOT reused despite a signature that looks like it: `ewmaUpdate`. It takes a
+ * BOOLEAN `outcome` (`target = outcome ? 1 : 0`); passing it the 0.5 of a
+ * success after a retry converts it to 1, hence full credit. See
+ * `ewmaThreeValued` below — the bug really happened and it was silent.
  *
- * NON réutilisé : l'indexation. `memory.js` indexe par modèle
- * (`modelBias(taskType)`). Ici la clé est `kyber|role|provider|model`, parce
- * qu'un même modèle peut servir deux métiers opposés — dans `dev-team`,
- * `implementeur` et `implementeur-expert` peuvent tourner sur le même modèle, et
- * leur donner un score commun reproduirait exactement la fusion qui a détruit le
- * premier journal réel : `auditeur` (constate) et `verificateur` (réfute)
- * partageaient une clé, donc une préférence apprise pour l'un s'appliquait
- * silencieusement à celui dont le travail est de le contredire.
+ * NOT reused: indexing. `memory.js` indexes by model (`modelBias(taskType)`).
+ * Here the key is `kyber|role|provider|model`, because one model can serve two
+ * opposing trades — in `dev-team`, `implementeur` and `implementeur-expert` can
+ * run on the same model, and giving them a shared score would reproduce exactly
+ * the merge that destroyed the first real journal: `auditeur` (reports) and
+ * `verificateur` (refutes) shared a key, so a preference learned for one applied
+ * silently to the one whose job is to contradict it.
  *
  * Usage :
  *   node kybers/memory.cjs record --kyber dev-team --role implementeur \
  *     --specialty coder --provider ollama-cloud --model glm-5.3 \
  *     --task code --outcome success --attempts 1 [--note "..."]
  *   node kybers/memory.cjs route  --kyber dev-team --role implementeur \
- *     [--provider P --model M]      # le bras appris, ou l'hypothèse
+ *     [--provider P --model M]      # the learned arm, or the hypothesis
  *   node kybers/memory.cjs lesson  --kyber dev-team --text "..." --tags a,b
  *   node kybers/memory.cjs used    --kyber dev-team --index 0
  *   node kybers/memory.cjs stats   [--kyber dev-team]
@@ -60,18 +58,17 @@ const {
   EWMA_MAX_DELTA,
 } = require("../memory.js");
 
-/* Décroissance : un score appris une fois ne reste pas vrai. Un fournisseur met
-   à jour un modèle, un prompt change, un tarif bouge. Sans décroissance, une
-   ligne mal étiquetée biaise le routage indéfiniment.
+/* Decay: a score learned once does not stay true. A provider updates a model,
+   a prompt changes, a price moves. Without decay, a mislabelled line biases
+   routing forever.
 
-   0.001/h ≈ -0.024/jour : délibérément beaucoup plus lent que les -0.005/h de
-   `ruflo`, dont l'échelle d'usage est bien plus intensive. Ici un bras peut
-   légitimement rester deux semaines sans tourner.
+   0.001/h ≈ -0.024/day: deliberately much slower than the -0.005/h of `ruflo`,
+   whose usage scale is far more intensive. Here an arm can legitimately sit for
+   two weeks without running.
 
-   ELLE SE CALCULE À LA LECTURE, JAMAIS SEULEMENT À L'ÉCRITURE. Sinon un bras
-   que plus personne n'exécute conserve son score pour toujours — exactement le
-   cas qu'on veut corriger. Un score ne se met à jour que quand quelque chose
-   tourne ; la décroissance doit s'appliquer même quand rien ne tourne. */
+   IT IS COMPUTED ON READ, NEVER ONLY ON WRITE. Otherwise an arm nobody runs any
+   more keeps its score forever — exactly the case we want to fix. A score only
+   updates when something runs; decay must apply even when nothing runs. */
 const DECAY_PER_HOUR = 0.001;
 const DECAY_FLOOR = 0.1;
 
@@ -133,7 +130,7 @@ function hoursSince(iso, now) {
   return Math.max(0, (now - t) / 3_600_000);
 }
 
-/** Le score effectif, décroissance appliquée. C'est LA fonction à ne pas oublier. */
+/** The effective score, with decay applied. This is THE function not to forget. */
 function effective(arm, now) {
   if (!arm || !Number.isFinite(arm.ewma)) return 0.5;
   const decayed = arm.ewma - DECAY_PER_HOUR * hoursSince(arm.updated, now);
@@ -141,13 +138,13 @@ function effective(arm, now) {
 }
 
 /**
- * Trois valeurs, pas deux : un succès après reprise n'est pas un succès propre.
- * Constaté sur un vrai journal — une ligne disait `success` alors que la leçon
- * du même run décrivait un schéma rejeté ayant exigé deux tentatives. La panne
- * avait disparu du dossier.
+ * Three values, not two: a success after a retry is not a clean success.
+ * Observed in a real journal — one line said `success` while the lesson of the
+ * same run described a rejected schema that had required two attempts. The
+ * failure had vanished from the record.
  *
- * Le 0.5 est une CONVENTION, pas une mesure : elle dit « deux essais valent
- * moins qu'un », sans prétendre que c'est exactement deux fois moins.
+ * The 0.5 is a CONVENTION, not a measurement: it says "two attempts are worth
+ * less than one", without claiming that it is exactly twice less.
  */
 function outcomeValue(outcome, attempts) {
   if (outcome === "success") return attempts >= 2 ? 0.5 : 1;
@@ -155,23 +152,23 @@ function outcomeValue(outcome, attempts) {
 }
 
 /**
- * POURQUOI CETTE FONCTION N'APPELLE PAS `ewmaUpdate` DE `memory.js`
+ * WHY THIS FUNCTION DOES NOT CALL `ewmaUpdate` FROM `memory.js`
  *
- * Je l'appelais, et c'était un bug silencieux. La signature de `memory.js` est
- * `ewmaUpdate(prev, outcome, opts)` où `outcome` est un BOOLÉEN — son corps fait
- * `const target = outcome ? 1 : 0`. En lui passant mon `0.5`, truthy, il le
- * convertissait en `1` : le succès après reprise recevait le CRÉDIT PLEIN, et
- * mon raffinement à trois valeurs ne servait à rien.
+ * I used to call it, and it was a silent bug. The signature in `memory.js` is
+ * `ewmaUpdate(prev, outcome, opts)` where `outcome` is a BOOLEAN — its body does
+ * `const target = outcome ? 1 : 0`. Passing it my `0.5`, truthy, converted it to
+ * `1`: a success after a retry received FULL CREDIT, and my three-valued
+ * refinement was useless.
  *
- * Le symptôme était visible et je l'ai d'abord mal lu : deux bras, l'un à trois
- * succès propres et l'autre à trois succès après reprise, affichaient la même
- * `ewma` (0.744) alors que leurs `essais_moy` différaient (1 vs 2).
+ * The symptom was visible and I first misread it: two arms, one with three clean
+ * successes and the other with three successes after a retry, displayed the same
+ * `ewma` (0.744) while their `essais_moy` differed (1 vs 2).
  *
- * La leçon dépasse ce cas : « réutiliser plutôt que dupliquer » tient quand les
- * contrats coïncident. Ici le mien est plus fin que celui de la fonction
- * exportée, donc l'appeler n'était pas de la réutilisation, c'était une
- * conversion de type silencieuse. Le clamp et les constantes, eux, sont bien
- * repris de `memory.js` — c'est la partie dont le contrat coïncide exactement.
+ * The lesson goes beyond this case: "reuse rather than duplicate" holds when the
+ * contracts coincide. Here mine is finer than the exported function's, so
+ * calling it was not reuse, it was a silent type conversion. The clamp and the
+ * constants, though, are indeed taken from `memory.js` — that is the part whose
+ * contract coincides exactly.
  */
 function ewmaThreeValued(prev, x, opts) {
   const alpha = (opts && opts.alpha) ?? EWMA_ALPHA;
@@ -238,9 +235,9 @@ function cmdRecord(argv) {
     note: (argv.note || "").slice(0, 200),
   });
 
-  /* `blocked` n'est pas `failure` : un modèle inconnu, une erreur d'auth ou un
-     plafond atteint ne disent RIEN sur la qualité du modèle. On journalise et on
-     exclut du score — confondre les deux pollue la table de routage. */
+  /* `blocked` is not `failure`: an unknown model, an auth error or a reached
+     ceiling say NOTHING about the quality of the model. We journal it and
+     exclude it from the score — conflating the two pollutes the routing table. */
   if (outcome === "blocked") {
     return { recorded: true, scored: false, reason: "blocked — exclu du score" };
   }
@@ -323,14 +320,14 @@ function cmdRoute(argv) {
     };
   }
 
-  /* Le second éligible sert de référence : la marge se juge contre la meilleure
-     ALTERNATIVE, pas contre une moyenne.
+  /* The second eligible arm serves as the reference: the margin is judged
+     against the best ALTERNATIVE, not against an average.
 
-     Sans second bras, il n'y a AUCUNE marge à établir — ma première version
-     renvoyait alors 1.0 et concluait « appris », c'est-à-dire qu'elle déclarait
-     une préférence fondée sur un unique candidat. C'est le contraire du but : on
-     ne démontre pas qu'un bras est meilleur quand rien ne lui est comparé. Un
-     seul candidat reste une hypothèse, même après cent observations. */
+     Without a second arm there is NO margin to establish — my first version
+     returned 1.0 and concluded "appris", i.e. it declared a preference based on
+     a single candidate. That is the opposite of the goal: you do not
+     demonstrate that an arm is better when nothing is compared against it. A
+     single candidate remains a hypothesis, even after a hundred observations. */
   const runnerUp = eligible[1];
   if (!runnerUp) {
     return {
@@ -382,9 +379,9 @@ function cmdLesson(argv) {
   if (argv.from) entry.from = argv.from;
   appendJsonl(file, entry);
 
-  /* Éviction par UTILITÉ RÉELLE, jamais par ancienneté de création : une leçon
-     jamais utilisée et vieille part la première ; une leçon utilisée vingt fois
-     reste même si elle est ancienne — c'est précisément le signal qu'elle sert. */
+  /* Eviction by REAL UTILITY, never by creation age: an unused and old lesson
+     leaves first; a lesson used twenty times stays even if old — that is
+     precisely the signal that it is useful. */
   let lessons = readJsonl(file);
   let evicted = null;
   if (lessons.length > LESSONS_MAX_COUNT) {

@@ -72,9 +72,12 @@ the prompts **before** writing, and record `provenance` with the URL and commit.
 All are documented in the file's own comments; none is cosmetic.
 
 1. **The AMEND cycle is prose-only**: `AMEND` sends work back to an earlier stage, and `inputs` citing a later stage is a validator error — "two AMEND cycles at most, never three" is an instruction only.
-2. **The most important gate cannot be declared**: the terminal human gate on push to main/staging has no downstream stage for `gate: true` to guard, so `livraison` carries none.
+2. **The terminal human gate is declared, not enforced**: `livraison` carries `gate: true` for the push-to-main/staging validation. The validator accepts a
+   terminal gate with a warning; no platform primitive makes it bind, so nothing mechanically stops a push.
 3. **The root-stage fan-out is lost**: "N read-only scouts over disjoint areas" needs `forEach` on a stage with no `inputs`; it survives only in the mapper's prompt, so nothing bounds the count.
-4. **`inputs` only adds, never subtracts**: the anti-anchoring rule ("never receive the implementer's account") is a removal of context — expressible as prose only.
+4. **`inputs` only adds, never subtracts**: the format cannot declare a removal of context. The anti-anchoring rule ("never receive the implementer's account")
+   is in fact provided structurally — each `agent()` child is a fresh context, and in a measured probe a sibling given a sentinel answered `NO-ACCESS` — but
+   nothing prevents the orchestrator from pasting the account into a downstream prompt, so the isolation is structural yet not guaranteed.
 5. **Batch-content routing is undeclarable**: `implementeur` and `implementeur-expert` share one stage because the format has no conditional routing, so "critical batch → expert" is an instruction.
 6. **The write-disjointness predicate is invented here**: `test -z "$(git diff --name-only | grep -v -E '<batch-paths>')"` is the only expression of "one writer per worktree", and it fails on legitimate writes outside the declared set (lockfiles, generated files) unless each spec lists them.
 7. **No run-artifact contract, and no declared executables**: no field says where a stage writes its outputs, and the DoD floor silently assumes `make`, `pnpm`, `playwright`, `curl`, `jq` and `git`, which `tools:` cannot declare. `../README.md` records for `dev-team` the same single-level DoD and the absence of any stop or escalation mechanism: a run that should halt and ask a human cannot be halted.

@@ -166,6 +166,100 @@ spec, and deleting it would silently destroy a guarantee.
 `ollama-cloud/glm-5.3` means nothing on another platform. Treat it as an
 indication of what was resolved elsewhere, never as a target.
 
+### `provider`/`model` are HINTS. `needs` is the CONTRACT.
+
+The two lines of the format block mean exactly what they say: `provider:`/`model:`
+record the resolution obtained on the author's platform, and `needs:` records the
+requirement the role actually has. The doctrine follows from that — and until now,
+nothing did.
+
+**Who may vary the binding.** The resolver — you, at installation, or the orchestrator
+at run time — MUST satisfy the role's `needs`. It MAY bind a model other than the hint,
+on one condition: the chosen model satisfies `needs`. The hint is the PREFERRED
+binding; it is used when it satisfies `needs` and when no learned preference overrides
+it. Without that latitude the hint is always followed, one arm per role, and the memory
+protocol can never compare anything — a mechanism that cannot learn is not a mechanism.
+
+**The hard case, said plainly.** Latitude is worth nothing where the platform cannot
+MEASURE the need. On at least one real harness (DSH), model declarations expose only
+`id`, `name`, `input`, `contextWindow`, `maxTokens` — no price, no latency, no
+throughput. `tier: fast | balanced | deep` is therefore **not resolvable**: no
+alternative binding can be *justified* by a need, and `lint.cjs` prints
+`non vérifiable … ni vitesse ni prix` for every such role. Where nothing can be
+measured, the hint becomes authoritative for that role and **no learning is possible
+for it**. Do not present that as capability: it is a requirement the platform cannot
+express, and it belongs in the degradation table of §2 like any other.
+
+**What this costs, and how to pay it.** If bindings may vary, two runs of the same
+kyber are no longer automatically comparable. The memory key is exactly
+`kyber|role|provider|model`, so the unit of comparison is the **arm** — one role bound
+to one model — never the kyber. A run is comparable to another run of the same arm, and
+learning happens by comparing *different arms of the same role*. A kyber that declares
+one model per role therefore produces one arm per role: at any sample size there is no
+alternative to compare against. **Observed:** a real end-to-end run of `veille` used the
+declared models exactly — 5 arms, all `n=1` — and every routing call returned
+`{"decision":"hypothèse"}`. A synthetic probe of a single arm at `n=3` still returned
+`hypothèse` (*"a single arm reached n=3 … no alternative to compare it with, therefore
+no demonstrable margin"*); a second arm at `n=3` was required before it returned
+`appris` (margin 0.488). **A kyber declaring one model per role can never learn, at any
+sample size.** Varying the binding is what makes the memory work; that is why the hint
+must not be read as a law.
+
+### `definitionOfDone` proves the FORM of the contract, never its truth
+
+This is the most important honest statement this document can make about verification.
+A `definitionOfDone` is a list of shell commands; all it can check is that files exist,
+markers are present, counts match and a status line reads `200`. **It cannot check that
+the content is true.** A receipt `200 <sha256> …` attests a fetch; a DoD that greps for
+`^200 ` and counts files cannot tell a receipt attesting a real fetch from one asserting
+it. A DoD that counts `R<n>:` answer lines proves ten answers were written down, never
+that a human gave them.
+
+**Observed, not theoretical.** In the one real end-to-end run of `veille`, all 15 DoD
+commands passed, including 4/4 on the framing stage, while **no human was ever
+interviewed** — the answers were authored by the orchestrator, and 2 of the 10 answer
+lines literally read `OPEN — no answer received`. On independent re-fetch of all 7
+collection receipts, only **3** `sha256` values reproduced. The DoD could not see
+either fact.
+
+What a `PASS` proves: the command was run and exited 0. What it does not prove: that
+the artifact's content is true, that a human was consulted, or that a cited source says
+what the receipt claims. A DoD narrows the space of lies; it does not close it. Do not
+report a green DoD as evidence that a run was correct — report what it checked.
+
+### `elucidation: required` — the interview happens BEFORE the workflow
+
+`elucidation: required` means: **the human is interviewed before the run starts, as a
+step the orchestrator performs in conversation — then the answers are written to a file
+that the first stage reads.** It does not mean that some stage interrogates the human
+while the run is in flight.
+
+**Why the other reading is impossible.** No workflow script can pause to ask a human
+anything. A fan-out script's globals are exactly the launch primitives, the progress
+narrator and the immutable `args` — there is no pause, escalate, abort or approval
+primitive — and a role executed inside a stage runs as a sub-agent with no channel to
+the human. A role prompt that says *"you interrogate the human and you wait"* is
+therefore unsatisfiable by construction: the agent it addresses cannot hear the answer.
+The only place the interview can happen is **before** the script is launched.
+
+**So the contract is:**
+
+1. Before composing the team or launching the run, the orchestrator asks the declared
+   questions in conversation and waits for the answers.
+2. It writes the answers to a file (a run directory is the usual convention) whose
+   content the first stage reads as its input.
+3. The first stage records and structures those answers; it never claims to have
+   collected them.
+
+**Nothing enforces this.** The validator checks only that `elucidation` is `none` or
+`required`; no consumer reads the field, and no mechanism can enforce it mid-run. An
+orchestrator that skips the interview composes on assumptions and reports nothing —
+**and the DoD will not catch it**, because counting answer lines proves the form of the
+interview, not that it happened. **Observed:** in a real `veille` run,
+`elucidation: required` was declared, no human was interviewed, the orchestrator
+authored the answers, 2 of the 10 answer lines read `OPEN — no answer received`, and
+the framing DoD still passed 4/4.
+
 ## 2. The contract — what must be true when you are done
 
 You are not done until you can **show** these five things:
@@ -189,6 +283,12 @@ You are not done until you can **show** these five things:
    An unresolved preference or a non-operative mechanism **do not block** the
    installation. Keeping quiet about them does: the user will believe their kyber
    is better equipped than it is.
+
+**And what a green DoD proves — nothing more.** Where a stage carries a
+`definitionOfDone`, the `PASS` you report proves the form of the contract, never its
+truth: that commands exited 0, not that the artifact is accurate nor that a human was
+consulted. Report what the DoD checked; never turn `15/15` into "the run is correct"
+(§1).
 
 An installation announced without these five points is not an installation.
 
@@ -221,6 +321,30 @@ List the models actually available on this platform. Then, for each role, resolv
   image, **do not substitute**: install the role and mark it
   `INDISPONIBLE — no image input`. An image role on a text model produces
   answers that look valid.
+
+  **Where that mark goes — it is not a field.** The accepted-field lists are closed
+  (`lint.cjs`: `KNOWN_TOP_FIELDS`, `PROVENANCE_FIELDS`), so do not invent an `unmet:`
+  key: an unknown **top-level** key draws a warning, but an unknown **`provenance`**
+  key is a hard error. The mark has two homes, and you write both:
+
+  1. **In the installation report** — the "hard requirement not met" row of the
+     degradation table in §2, and the `hard requirements not met` line of the final
+     report in §4. This is the mandatory record.
+  2. **Beside the role**, if you also want it to persist in the installed `kyber.yml`,
+     as a **YAML comment**, never a field:
+
+     ```yaml
+     roles:
+       - id: testeur
+         # UNMET: modality image — no image-capable model on this platform
+         needs:
+           modality: image
+     ```
+
+     A comment is not a field, so both closed lists never see it and the file stays
+     valid. **Verified:** a `kyber.yml` carrying this comment beside a role passes
+     `lint.cjs` unchanged. If you also need `context: large` to be recorded unmet, use
+     the same comment form with `context` in place of `modality`.
 - **`context: large` is a HARD requirement** in the same way.
 - **`tier` is a SOFT preference.** `fast` → the fastest model available;
   `balanced` → the middle one; `deep` → the most capable. If the platform exposes
@@ -280,6 +404,9 @@ topology that works.
 Do a **real dry run**: execute one of the team's roles on a trivial task and show
 the output. A role that has never run is not installed.
 
+A `PASS` in that dry run proves the command exited 0, not that its result is true —
+see the DoD limit in §1. Say what the dry run checked.
+
 Then deliver the report of §2, with its five points. End with:
 
 ```
@@ -296,7 +423,10 @@ kyber <id> installed on <platform>
 
 - **Inventing a configuration path.** If you have not seen it, you do not write it.
 - **Substituting a model for a hard requirement.** `image` unsatisfied =
-  `INDISPONIBLE`, not "a text model will do".
+  `INDISPONIBLE`, not "a text model will do". Do not confuse this with the hint
+  latitude of §1: binding a model other than the declared hint is allowed **when the
+  replacement satisfies `needs`**. What is forbidden is binding a model that does
+  **not** satisfy the requirement.
 - **Presenting a degraded topology as intact.**
 - **Creating a role that no stage reaches.** It will never run. If the target
   format does not know about stages, keep the list of roles in traversal order and

@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo
 # ---------- Integrity: pinned SHA-256 of the downloaded files ----------
 # These are the fingerprints of the current files in the official repository. Any change
 # to install.sh + served files must update these fingerprints identically.
-readonly SERVER_SHA256="a0c91b0034def15a13917f605da633ba6c115f5f122f92cb5dedd921578ecc27"
+readonly SERVER_SHA256="17c18d15100bd1e64eba5e23f3c55708d68979e99c81920b1381ff1c91ec096f"
 readonly HOSTED_SHA256="117bcf11a69b3047d1f2c1d68cae6338a90f2094ef465d20589f2065a2b2532e"
 readonly MEMORY_SHA256="7f5136c9e868f61bbdad1e2fa1bcddf9352e8006da6502c06b82fb04e5d39c0f"
 readonly MODELS_SHA256="e5070790f3bd914e03738a49b027ae78e72bf34ff9952d6ec033777fc59aa2ad"

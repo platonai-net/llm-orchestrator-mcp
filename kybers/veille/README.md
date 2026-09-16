@@ -2,13 +2,14 @@
 
 `veille` monitors a domain you name, detects what materially changed, and writes a dated,
 cited digest that separates signal from noise. It is a `kyber.yml` — a declarative spec for a
-team of specialist agents, installed on any platform. Stage 0 is an interview, not a
-preamble: nothing is composed before you answer it.
+team of specialist agents, installed on any platform. The interview happens **before the
+workflow starts**, in conversation with the orchestrator: nothing is composed before you
+answer it.
 
 ## Shape
 
 ```text
-framing (once)              interview → $RUN/framing.md, the watchlist the next stage iterates
+framing (once)              records the interview → $RUN/framing.md, the watchlist the next stage iterates
 collection (forEach, cap 6) one agent per confirmed source — official / weak signals
 triage (once, gate)         N bulletins → one ranked list: signal | watch | noise
 synthesis (once)            $RUN/digest.md — Signal / Watch / Discarded, all cited
@@ -16,7 +17,7 @@ synthesis (once)            $RUN/digest.md — Signal / Watch / Discarded, all c
 
 | role id | specialty (`role:`) | model as authored (resolved at install) | job |
 |---|---|---|---|
-| `framer` | `business-analyst` | `zai-coding-cn/glm-5.3` | asks the ten questions, writes the watchlist |
+| `framer` | `business-analyst` | `zai-coding-cn/glm-5.3` | records the ten answers as the watchlist (the interview itself happens before the run) |
 | `official-collector` | `scout` | `ollama-cloud/deepseek-v4.1-flash` | one official source: dated facts + receipt |
 | `weak-signal-collector` | `scout` | `ollama-cloud/glm-5.3-flash` | one weak-signal source: reviews, forums, social |
 | `signal-analyst` | `analyst` | `ollama-cloud/kimi-k3` | triage; collects nothing, writes nothing |
@@ -39,14 +40,31 @@ load-bearing, not ceremonial. `framing` has no `inputs`, and in a `mapreduce` sh
 stage is exactly what produces the list the next stage iterates — the ten answers *are* the
 watchlist. Without them `collection` has nothing to walk and the fan-out has no size.
 
-The format can express neither *what* to ask nor *where* the answers go, so the author
-invented the contract: ten questions in the `framer` prompt (the only executable place), and
-answers pinned to `$RUN/framing.md` — one `Q<n>:` line per question, one `R<n>:` line per
-answer received, then `SOURCE: <url>` per confirmed source and `ALERT-LEVEL: <what triggers
-an alert>` — checkable in the `framing` DoD. "No collection before the interview" is declared
-as `gate: true` on `framing` itself. An entry stage *may* carry a gate; an earlier revision of
-this kyber said otherwise and cited a `lint.cjs` message that does not exist. The gate is
-declared, but no platform primitive enforces it — it is intent, not a constraint.
+**Where the interview has to happen: before the workflow starts, in conversation.** No
+workflow script can pause to ask a human anything — a fan-out script's globals are exactly the
+launch primitives (`agent`, `parallel`, `pipeline`), progress narration (`phase`, `log`) and
+the immutable `args`, with no `escalate`, `abortWorkflow` or `requestApproval` — and a role
+inside a stage runs as a subagent with no channel to the human. So the orchestrator, **not the
+`framer` role**, MUST put the ten questions to the human before it launches the script, and
+write the answers to a file the first stage reads. That is what `elucidation: required` has to
+mean here: nothing enforces it mid-run, and `lint.cjs` only checks the enum value.
+
+The concrete contract this kyber invented: the ten questions live in the `framer` prompt (the
+only executable place the format offers), and the answers are pinned to `$RUN/framing.md` —
+one `Q<n>:` line per question, one `R<n>:` line per answer received, then `SOURCE: <url>` per
+confirmed source and `ALERT-LEVEL: <what triggers an alert>` — checkable in the `framing` DoD.
+The `framing` stage reads the answers already collected and structures them; it does not, and
+cannot, interrogate anyone. "No collection before the interview" is declared as `gate: true` on
+`framing` itself: an entry stage *may* carry a gate — an earlier revision of this kyber said
+otherwise and cited a `lint.cjs` message that does not exist — the validator emits only a
+warning for that position, and no platform primitive enforces it. The gate is declared intent,
+not a constraint.
+
+**The failure this pattern still permits.** In the one real end-to-end run of this kyber the
+script was launched with no interview at all: the answers were authored by the orchestrator,
+2 of the 10 `R<n>:` lines literally read `OPEN — no answer received`, and the `framing` DoD
+still passed 4/4. The file contract makes the interview *recordable*, not *enforced*; only the
+orchestrator's discipline does that.
 
 ## Install
 
@@ -66,8 +84,8 @@ show me every prompt in full, and wait for my confirmation.
   domain observations. Nothing holds last cycle's prices, so the comparison depends on the
   operator keeping old runs around.
 - **The interview is verifiable; its quality is not** — the DoD proves ten answers were written
-  down, not that they were understood, and **no business skill ships with it**: which sources
-  to watch, and how often, lives only in the `framer` prompt.
+  down, not that a human gave them nor that they were understood, and **no business skill ships
+  with it**: which sources to watch, and how often, lives only in the `framer` prompt.
 - **Two collectors share one stage** (a role `id` can be reached by one stage only), so routing
   a source to official or weak-signal is the orchestrator's judgement; and 15 DoD commands pin
   the artifact contract (`$RUN/framing.md`, `$RUN/collection/*.json|.fetch`,

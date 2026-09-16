@@ -60,8 +60,10 @@ Install the kyber "audit": https://raw.githubusercontent.com/platonai-net/llm-or
   So must-pass became the eight commands, and the advisory level was demoted to prompt prose, the very form the field exists to fight.
 - **A reproduction command is mandatory, which demotes judgement-type findings.** Commands #4/#5 demand a non-empty `repro` *and* that it FAIL on the current
   tree, so "this design is risky" or "this is undocumented" is not weakened but excluded.
-- **Two structural gaps, left open.** The first stage cannot be gated (the lint refuses a gate without `inputs`, and a first stage has nothing to receive), so
-  only the declared dependency `findings ← mapping` holds the downstream. And no field declares the run layout or the `bash`/`jq`/`git` the commands need.
+- **One structural gap, left open.** `mapping` carries `gate: true` — an entry stage MAY be gated (the validator warns, it no longer refuses) — and the declared
+  dependency `findings ← mapping` expresses the order. But no platform primitive enforces a gate, so the order holds only as long as the run script honours it.
+  And no field declares the run layout or the `bash`/`jq`/`git` the commands need. An earlier revision of this README said the lint refuses an entry-stage gate;
+  it quotes a message that does not exist — the same false citation that was carried in the kyber file itself.
 
 ## Has this been run?
 

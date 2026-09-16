@@ -20,7 +20,9 @@ express.
 
 - `elucidation: none | required` — the orchestrator MUST interview the human before
   composing the team. Taken from the "HARD MANDATE: interview first" of the domain
-  templates, which never launch agents on assumptions.
+  templates, which never launch agents on assumptions. **Clarified below**: the
+  interview happens in conversation before the workflow starts, and no mechanism
+  enforces it mid-run.
 - `maxDepth: 0 | 1` — recursion guard. `depth >= 2` forbidden: beyond that, nobody
   knows any more who launched what, nor whom to blame for a failure.
 
@@ -32,7 +34,8 @@ express.
   `inputs`; an entry stage MAY carry a gate (warning only), and so may a terminal
   stage. Note that no platform primitive enforces a gate — it is declared intent.
 - `definitionOfDone: [<commands>]` — "a DoD not verifiable by command is not a DoD".
-  Taken from the delegation contract.
+  Taken from the delegation contract. **Limit stated below**: a `PASS` proves the form
+  of the contract, never its truth.
 
 ### Added — provenance
 
@@ -128,6 +131,70 @@ versions, `INSTALL.md` in two states — and **at one point `lint.cjs` was broke
 because I was writing a check before the constant it uses **without running the
 validator between my modifications**. I verified at the end, not between the steps. **A
 validator is run after every change, not after the series.**
+
+### Corrected after independent verification — same day
+
+No field, enum or grammar changed, so `specVersion` stays **2**. These are corrections
+of what the documents claimed and of one validator judgment; they are recorded here
+because the rule of this file is that any modification appears in it.
+
+- **`lint.cjs`: an UNPROBED model was reported `OK`.** `classify()` computed
+  `alive = candidates that were not probed-and-failed`, so a model absent from
+  `.probe.json` passed the filter and was printed as working — collapsing exactly the
+  distinction `INSTALL.md` §3 calls central, "declared is not served". `DÉCLARÉ` was
+  reachable only when the probe file was missing entirely. The three states are now
+  distinct: probed and answering (`OK`), probed and silent (`INDISPONIBLE`), never
+  probed (`DÉCLARÉ — non sondé, donc non prouvé`). A candidate never probed is reported
+  as unproven even when another candidate, probed, answers. **Observed before the fix:**
+  a kyber printed `OK` on `context: large` with 14 declared candidate models, of which
+  14 had never been probed.
+- **`INSTALL.md` §3 ordered an unexecutable mark.** It said to "mark the role
+  `INDISPONIBLE — no image input`" while no field could carry the mark and the closed
+  field lists would not accept one. The mark now has two named homes: the installation
+  report (§2/§4), and — if it must persist in `kyber.yml` — a **YAML comment** beside the
+  role, never a field. Verified: a `kyber.yml` carrying that comment passes `lint.cjs`
+  unchanged; an invented top-level `unmet:` key draws only a warning, and an invented
+  `provenance` key is a hard error.
+- **`CONVENTION.md` §1 named a `SPEC-VERSION` artifact that does not exist.** No file or
+  directory of that name exists anywhere; `SPEC-VERSION` is only a heading inside this
+  file. The table now says so, rather than introducing new machinery.
+- **`CONVENTION.md` §10 contradicted §0 on branch pinning.** Its canonical `installHint`
+  example used a `main` branch URL while §0 says "never a branch". The example is now
+  commit-pinned (`…/<commit>/…`, the full SHA from `provenance.commit`), matching §0 and
+  §9.
+- **`elucidation: required` had no enforceable meaning mid-run — and still has none.**
+  The field is read by nothing (0 files in the harness installation; the only consumers
+  are `lint.cjs`'s enum check and a human reader). The workflow
+  scripting globals are exactly the launch primitives, progress narration and the
+  immutable `args`; there is no `escalate`, `abortWorkflow` or `requestApproval`. A role
+  prompt that orders the agent to "interrogate the human and wait" is therefore
+  unsatisfiable by construction. `INSTALL.md` §1 now defines `elucidation: required` as
+  the interview performed by the orchestrator **in conversation before the workflow
+  starts**, with the answers written to a file the first stage reads, and states plainly
+  that no mechanism enforces it mid-run. **Observed in the real `veille` run:**
+  `elucidation: required` declared, no human interviewed, the orchestrator authored the
+  answers, 2 of 10 answer lines read `OPEN — no answer received`, and the framing DoD
+  still passed 4/4.
+- **`definitionOfDone` proves the FORM of a contract, never its truth.** Stated
+  prominently in `INSTALL.md` §1/§2, `CONVENTION.md` §5 and `kybers/README.md`: the
+  commands check existence, markers, counts and a `200` line, not content. A receipt
+  `200 <sha256> …` attests a fetch; grepping `^200 ` and counting files cannot tell it
+  from a receipt that asserts one.
+- **`provider`/`model` are hints; `needs` is the contract — and nothing followed from
+  it.** §1 already called the binding "indicative", but no text said who may vary it or
+  when. `INSTALL.md` §1 and `CONVENTION.md` §5 now state it: the resolver MUST satisfy
+  `needs`, MAY bind another model that satisfies `needs`, and the declared binding is the
+  PREFERRED choice. They also state the hard case — where the platform exposes no price,
+  no latency and no throughput (measured on DSH: model entries carry only `id`, `name`,
+  `input`, `contextWindow`, `maxTokens`), `tier` is not resolvable, the hint becomes
+  authoritative, and no learning is possible for that role. And the consequence for
+  memory: the unit of comparison is the **arm** (one role bound to one model), not the
+  kyber. **Observed:** the real `veille` run used its declared models exactly — 5 arms,
+  all `n=1` — and every routing call returned `hypothèse`; a single arm at `n=3` still
+  returned `hypothèse`, and a second arm at `n=3` was needed before `appris` (margin
+  0.488). A kyber declaring one model per role can never learn, at any sample size.
+  **Not a version break:** the field's meaning was already "indicative"; no consumer
+  reads a new field, and the change corrects what follows from an existing one.
 
 ### Not taken from `ruflo`, and why
 
