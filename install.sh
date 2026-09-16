@@ -299,7 +299,7 @@ EOF
 { "$NAME": { "type": "stdio", "command": "node", "args": ["$SERVER"] } }
 EOF
 )"
-  log "Claude Code   -> $proj (projet, sans clé)"
+  log "Claude Code   -> $proj (project, no key)"
 }
 
 # ---------- 4) Windsurf (~/.codeium/windsurf/mcp_config.json) ----------
@@ -324,7 +324,7 @@ EOF
   log "Kimi Code     -> $cfg"
 }
 
-# ---------- Désinstallation (--remove) : retire uniquement ce que l'install a ajouté ----------
+# ---------- Uninstall (--remove): removes only what the install added ----------
 uninstall_opencode() {
   local cfg="${OPENCODE_CONFIG:-}"
   if [ -z "$cfg" ]; then
@@ -333,44 +333,44 @@ uninstall_opencode() {
   fi
   remove_config "$cfg" "mcp.$NAME"
   remove_config "$cfg" "mcpServers.$NAME"
-  echo "  retiré : $cfg (llm-orchestrator)"
+  echo "  removed: $cfg (llm-orchestrator)"
 }
 uninstall_cursor() {
   local cfg="${CURSOR_CONFIG:-$HOME/.cursor/mcp.json}"
   remove_config "$cfg" "mcpServers.$NAME"
-  echo "  retiré : $cfg (llm-orchestrator)"
+  echo "  removed: $cfg (llm-orchestrator)"
 }
 uninstall_claude() {
   local global_cfg="${CLAUDE_CONFIG:-$HOME/.claude.json}"
   remove_config "$global_cfg" "mcpServers.$NAME"
-  echo "  retiré : $global_cfg (global)"
+  echo "  removed: $global_cfg (global)"
   remove_config "$DIR/.mcp.json" "mcpServers.$NAME"
-  echo "  retiré : $DIR/.mcp.json (projet)"
+  echo "  removed: $DIR/.mcp.json (project)"
 }
 uninstall_windsurf() {
   local cfg="${WINDSURF_CONFIG:-$HOME/.codeium/windsurf/mcp_config.json}"
   remove_config "$cfg" "mcpServers.$NAME"
-  echo "  retiré : $cfg (llm-orchestrator)"
+  echo "  removed: $cfg (llm-orchestrator)"
 }
 uninstall_kimi() {
   local cfg="${KIMI_CONFIG:-$HOME/.kimi/mcp.json}"
   remove_config "$cfg" "mcpServers.$NAME"
-  echo "  retiré : $cfg (llm-orchestrator)"
+  echo "  removed: $cfg (llm-orchestrator)"
 }
 
 if [ "${1:-}" = "--remove" ]; then
-  echo "Désinstallation de $NAME :"
+  echo "Uninstalling $NAME:"
   uninstall_opencode
   uninstall_cursor
   uninstall_claude
   uninstall_windsurf
   uninstall_kimi
-  # Seulement si installé hors clone (dossier téléchargé ~/.llm-orchestrator-mcp)
+  # Only if installed outside a clone (downloaded folder ~/.llm-orchestrator-mcp)
   if [ -d "$HOME/.llm-orchestrator-mcp" ]; then
     rm -rf "$HOME/.llm-orchestrator-mcp"
-    echo "  supprimé : $HOME/.llm-orchestrator-mcp"
+    echo "  deleted: $HOME/.llm-orchestrator-mcp"
   fi
-  echo "Terminé. Désinstallation propre — aucune entrée des autres outils n'a été touchée."
+  echo "Done. Clean uninstall — no entry of the other tools was touched."
   exit 0
 fi
 
@@ -380,25 +380,25 @@ install_claude
 install_windsurf
 install_kimi
 
-# ---------- Clés API ----------
-log "Backend configuré : $BACKEND_MODE"
+# ---------- API keys ----------
+log "Backend configured: $BACKEND_MODE"
 if [ "$BACKEND_MODE" != "local" ]; then
-  log "Proxy Kybernos : ${KYBERNOS_MCP_URL:-$HOSTED_URL} (clé écrite uniquement dans tes configs client)"
+  log "Kybernos proxy: ${KYBERNOS_MCP_URL:-$HOSTED_URL} (key written only into your client configs)"
 fi
 cat <<'EOF'
 
-Clés API optionnelles (au moins une est nécessaire pour les modèles locaux) :
+Optional API keys (at least one is required for the local models):
   export OPENAI_API_KEY=...        # GPT-5
   export ANTHROPIC_API_KEY=...     # Claude 4.5
   export GEMINI_API_KEY=...        # Gemini 3
   export MISTRAL_API_KEY=...       # Mistral Large 2
-  export GROQ_API_KEY=...          # Llama 4 (via Groq)
+  export GROQ_API_KEY=...          # Llama 4 (through Groq)
 
-Le serveur les lit depuis l'environnement du client (Opencode, Cursor...).
-Astuce : renseigne-les dans ton shell profile (~/.zshrc) pour qu'elles soient
-transmises aux clients lancés depuis le terminal.
+The server reads them from the client's environment (Opencode, Cursor...).
+Tip: set them in your shell profile (~/.zshrc) so they are
+passed on to the clients started from the terminal.
 
 EOF
 
-log "Terminé. Redémarre Opencode / Cursor / Claude Code / Windsurf / Kimi Code pour charger le serveur."
-log "Ensuite, demande à ton agent : « teste la santé des modèles et choisis le meilleur »."
+log "Done. Restart Opencode / Cursor / Claude Code / Windsurf / Kimi Code to load the server."
+log 'Then ask your agent: "check the health of the models and pick the best one".'
