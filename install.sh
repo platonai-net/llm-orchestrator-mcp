@@ -100,9 +100,9 @@ if [ -z "$BACKEND_MODE" ] && [ -t 0 ] && [ -t 1 ]; then
   fi
 elif [ -z "$BACKEND_MODE" ]; then
   BACKEND_MODE="local"
-  log "Non interactif → backend local. Active le proxy avec KYBERNOS_MCP_BACKEND=hosted|both."
+  log "Non-interactive → local backend. Enable the proxy with KYBERNOS_MCP_BACKEND=hosted|both."
 fi
-# assainissement défensif (jamais de quote/backslash dans la clé)
+# defensive sanitization (never a quote/backslash in the key)
 HOSTED_KEY="${HOSTED_KEY//\"/}"; HOSTED_KEY="${HOSTED_KEY//\\/}"
 HOSTED_URL="${HOSTED_URL//\"/}"
 
@@ -118,7 +118,7 @@ if [ "$BACKEND_MODE" != "local" ]; then
   ENV_BLOCK="$ENV_BLOCK }"
 fi
 
-# ---------- Utilitaires JSON (jq en priorité, sinon node) ----------
+# ---------- JSON utilities (jq first, otherwise node) ----------
 if command -v jq >/dev/null 2>&1; then
   json_get()  { jq "$1" "$2" 2>/dev/null; }
   json_merge_write() { local filter="$1" file="$2"; local tmp; tmp="$(mktemp)"; jq "$filter" "$file" > "$tmp" && mv "$tmp" "$file"; }
@@ -141,8 +141,8 @@ else
     node -e '
       const fs=require("fs");
       const [filter,file]=process.argv;
-      // filter: chemin pointé vers un objet à écrire, ex: mcpServers
-      // payload lu sur stdin (JSON)
+      // filter: dotted path to an object to write, e.g. mcpServers
+      // payload read from stdin (JSON)
       let payload="";process.stdin.on("data",d=>payload+=d).on("end",()=>{
         const doc=JSON.parse(fs.readFileSync(file,"utf8"));
         const keys=filter.split(".");
@@ -155,13 +155,13 @@ else
   }
 fi
 
-# ---------- Fusion JSON générique dans un fichier de config ----------
-# Tolère l'JSONC (commentaires // et /* */) via le fallback node : si le
-# fichier contient des commentaires, une copie .bak-install est conservée.
+# ---------- Generic JSON merge into a config file ----------
+# Tolerates JSONC (// and /* */ comments) through the node fallback: if the
+# file contains comments, a .bak-install copy is kept.
 merge_config() {
-  local file="$1"        # fichier cible
-  local path="$2"        # chemin pointé, ex: mcpServers  ou  projects."/chemin".mcpServers
-  local payload="$3"     # JSON à fusionner
+  local file="$1"        # target file
+  local path="$2"        # dotted path, e.g. mcpServers  or  projects."/path".mcpServers
+  local payload="$3"     # JSON to merge
   [ -f "$file" ] || echo '{}' > "$file"
   if command -v jq >/dev/null 2>&1 && jq empty "$file" >/dev/null 2>&1; then
     local tmp; tmp="$(mktemp)"
@@ -194,8 +194,8 @@ merge_config() {
     catch(e){
       const backup=file+".bak-install";
       try{fs.copyFileSync(file,backup);}catch{}
-      doc=JSON.parse(strip(src)); // JSONC toléré (commentaires retirés, backup conservé)
-      process.stderr.write("[install] commentaires retirés de "+file+" (backup : "+backup+")\n");
+      doc=JSON.parse(strip(src)); // JSONC tolerated (comments stripped, backup kept)
+      process.stderr.write("[install] comments stripped from "+file+" (backup: "+backup+")\n");
     }
     const parts=pathExpr.match(/[^.]+|\["[^"]+"\]/g)||[];
     let v=doc;
@@ -210,9 +210,9 @@ merge_config() {
   ' "$file" "$path" "$payload"
 }
 
-# ---------- Retrait JSON générique (clé supprimée, autres clés intactes) ----------
-# Miroir de merge_config avec sémantique de SUPPRESSION : retire la clé $NAME sous le
-# chemin pointé, n'ajoute jamais rien, ne touche à aucune autre clé.
+# ---------- Generic JSON removal (key deleted, other keys untouched) ----------
+# Mirror of merge_config with DELETION semantics: removes the $NAME key under the
+# dotted path, never adds anything, never touches any other key.
 remove_config() {
   local file="$1" path="$2"
   [ -f "$file" ] || return 0
@@ -235,7 +235,7 @@ remove_config() {
       try{fs.copyFileSync(file,backup);}catch{}
       try{doc=JSON.parse(strip(src));}
       catch(err){process.exit(0);}
-      process.stderr.write("[install] commentaires retirés de "+file+" (backup : "+backup+")\n");
+      process.stderr.write("[install] comments stripped from "+file+" (backup: "+backup+")\n");
     }
     const parts=pathExpr.match(/[^.]+|\["[^"]+"\]/g)||[];
     let v=doc, parent=null, lastKey=null;
@@ -256,7 +256,7 @@ install_opencode() {
   if [ -z "$cfg" ]; then
     local d="$HOME/.config/opencode"
     if [ -f "$d/opencode.jsonc" ]; then
-      cfg="$d/opencode.jsonc"    # opencode.jsonc prioritaire s'il existe
+      cfg="$d/opencode.jsonc"    # opencode.jsonc takes priority if it exists
     else
       cfg="$d/opencode.json"
     fi
@@ -284,7 +284,7 @@ EOF
   log "Cursor        -> $cfg"
 }
 
-# ---------- 3) Claude Code (~/.claude.json + .mcp.json projet) ----------
+# ---------- 3) Claude Code (~/.claude.json + project .mcp.json) ----------
 install_claude() {
   local global_cfg="${CLAUDE_CONFIG:-$HOME/.claude.json}"
   [ -f "$global_cfg" ] || echo '{}' > "$global_cfg"
@@ -293,7 +293,7 @@ install_claude() {
 EOF
 )"
   log "Claude Code   -> $global_cfg (global)"
-  # Option projet : inscription SANS env — jamais de clé dans un fichier du repo.
+  # Project option: registration WITHOUT env — never a key in a file of the repo.
   local proj="$DIR/.mcp.json"
   merge_config "$proj" 'mcpServers' "$(cat <<EOF
 { "$NAME": { "type": "stdio", "command": "node", "args": ["$SERVER"] } }
