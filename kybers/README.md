@@ -88,6 +88,31 @@ l'air. Le lien sera rétabli si la source est publiée.
 Trois kybers écrits indépendamment ont convergé sur les mêmes manques. Ils sont
 réels et non corrigés — les taire serait pire que les documenter.
 
+> ### Comment ces limites ont été trouvées
+>
+> Les quatre kybers ont été écrits **par des agents séparés, sans se voir**, à
+> partir du même format et de la même doctrine. Trois d'entre eux ont buté
+> **indépendamment** sur exactement les mêmes défauts :
+>
+> | Défaut | `dev-team` | `veille` | `audit` | `socratic` |
+> |---|:---:|:---:|:---:|:---:|
+> | Une porte ne peut pas garder l'entrée | ✓ | ✓ | ✓ | ✓ |
+> | `inputs` ne sait qu'ajouter, jamais retirer | ✓ | | ✓ | |
+> | DoD à deux niveaux sans logement | ✓ | | ✓ | ✓ |
+> | Aucun mécanisme d'arrêt ni d'escalade | ✓ | | ✓ | |
+> | `role:` non vérifié par le validateur | ✓ | ✓ | ✓ | |
+> | Contrat d'artefacts à inventer | ✓ | ✓ | ✓ | |
+>
+> **Quatre agents sur quatre** ont buté sur la porte d'entrée, et chacun a réagi
+> différemment — l'un a déplacé la porte, l'autre l'a tue, deux l'ont documentée
+> comme un renoncement. Aucun n'a inventé de champ. C'est ce qui a permis de
+> trancher entre « le format a raison et l'auteur se trompe » et « le format a
+> tort » : quand quatre lecteurs indépendants se heurtent au même mur, c'est le
+> mur.
+>
+> Les trois premiers défauts de ce tableau sont **corrigés depuis**. Les autres
+> sont ouverts.
+
 | Limite | Conséquence |
 |---|---|
 | **Pas d'arête arrière** | Le verdict ternaire de la doctrine (GO / **AMEND** / NO-GO), où AMEND renvoie le travail en arrière, est inexprimable : les `inputs` ne peuvent citer qu'un étage antérieur. La boucle de correction n'existe qu'en prose. |
