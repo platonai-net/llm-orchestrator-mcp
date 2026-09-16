@@ -528,6 +528,19 @@ function lintKyber(id, served, probes) {
 
   const resolutions = roles.map((r) => resolveNeeds(r, served, probes)).filter((x) => x.hard.length || x.soft.length);
 
+  /* Un kyber SANS AUCUNE `definitionOfDone` passait la validation en silence, alors
+     que la spec présente ce champ comme LA garantie que « terminé » est
+     vérifiable. Constaté sur un kyber réel dont le livrable n'est pas un artefact
+     (un kyber socratique : son critère d'achèvement se constate dans une tête, pas
+     dans une commande) — l'auteur a refusé d'écrire une fausse commande, et rien
+     ne l'a signalé. Avertissement et non erreur : l'absence peut être le bon
+     choix, mais elle ne doit jamais être silencieuse. */
+  if (stages.length > 0 && !stages.some((s) => Array.isArray(s.definitionOfDone) && s.definitionOfDone.length)) {
+    warnings.push(
+      "aucune definitionOfDone sur aucun étage — rien ne prouve mécaniquement qu'un run a réussi. Si c'est délibéré (livrable non-artefact), dis-le dans le README du kyber.",
+    );
+  }
+
   return { id, errors, warnings, resolutions };
 }
 

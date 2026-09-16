@@ -39,21 +39,24 @@ stages:
   # pas un plan. C’est le seul étage d’entrée possible, donc celui où l’humain
   # entre dans la machine.
   #
-  # NOTE DE FORMAT — il ne peut PAS porter `gate: true` : le validateur refuse une
-  # porte sans `inputs`, et une porte ne garde que ce qui dépend d’elle. La règle
-  # « rien ne part avant que l’humain ait répondu » n’est donc pas exprimable ici.
-  # Elle est portée par `elucidation: required` au niveau du kyber et par le
-  # prompt du `questionneur`, pas par la structure. C’est une limite réelle de la
-  # grammaire, pas un oubli.
+  # La PORTE D'ENTRÉE, et c'est ici que la doctrine la veut : rien ne part avant
+  # que l'humain ait répondu. Une porte d'entrée n'a pas d'`inputs` par
+  # définition ; la grammaire l'accepte désormais, et le validateur vérifie
+  # qu'un étage en aval la consomme bien — sans quoi elle ne garderait rien.
   - id: elucidation
     roles: [questionneur]
     mode: once
+    gate: true
 
-  # La porte du milieu, et elle est posée là où elle compte : aucun camp ne
+  # La porte du milieu, et elle est posée là où elle compte aussi : aucun camp ne
   # s’affronte sur une thèse qui n’a pas d’abord été restituée dans sa forme la
   # plus forte. C’est la règle socratique la plus concrète du lot — une thèse
   # attaquée avant d’être comprise est un homme de paille, et un homme de paille
   # n’apprend rien à personne.
+  #
+  # Deux portes, deux rôles distincts : la première protège l'entrée (on ne
+  # travaille pas sans réponse), la seconde protège l'épreuve (on n'attaque pas
+  # une thèse mal comprise). Elles ne font pas le même travail.
   - id: reformulation
     roles: [reformulateur]
     mode: once
