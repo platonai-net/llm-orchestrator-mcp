@@ -382,7 +382,14 @@ function lintKyber(id, served, probes) {
       errors.push(`étage "${sid}" : mode untilConverged sans maxRounds — boucle non bornée`);
     }
     if (mode === "forEach" && inputs.length === 0) {
-      errors.push(`étage "${sid}" : mode forEach sans inputs — rien à itérer`);
+      /* Un étage RACINE ne peut pas avoir d'`inputs`, et le fan-out read-only est
+         pourtant la vague parallèle la moins risquée d'une doctrine réelle :
+         « N scouts read-only sur des zones disjointes ». Ce que `forEach` itère
+         est ici déterminé par le rôle, pas par un étage amont. Avertissement et
+         non erreur : c'est moins vérifiable, ce n'est pas incohérent. */
+      warnings.push(
+        `étage "${sid}" : forEach sur un étage racine — ce qui est itéré vient du rôle, pas d'un amont : rien ne borne le nombre d'itérations`,
+      );
     }
 
     /* --- champs de doctrine, repris de kybernos-parallel et kybernos-delegation ---
@@ -463,7 +470,17 @@ function lintKyber(id, served, probes) {
   for (const [sid, idx] of seen) {
     if (stages[idx] && stages[idx].gate === true) {
       const downstream = stages.some((o) => Array.isArray(o && o.inputs) && o.inputs.includes(sid));
-      if (!downstream) {
+      /* Une porte TERMINALE est légitime, et elle était refusée à tort. La porte la
+         plus coûteuse d'une doctrine réelle est la dernière : « rien ne part en
+         production sans validation humaine ». Elle ne garde aucun étage — elle
+         garde la LIVRAISON, donc l'absence d'aval est sa définition, pas un défaut.
+         Un kyber réel a dû la taire, et son auteur a refusé d'ajouter un étage
+         factice dont le seul rôle serait de la rendre déclarable — ce qui aurait
+         été exactement le lancement spéculatif que `gate` existe pour empêcher. */
+      const hasLaterStage = stages.some((o, j) => j > idx && Array.isArray(o && o.inputs) && o.inputs.length);
+      if (!downstream && !hasLaterStage) {
+        warnings.push(`étage "${sid}" : gate terminal — aucun étage en aval, la porte garde la livraison`);
+      } else if (!downstream) {
         errors.push(`étage "${sid}" : gate sans étage en aval qui en dépend — la porte ne garde rien`);
       }
     }
