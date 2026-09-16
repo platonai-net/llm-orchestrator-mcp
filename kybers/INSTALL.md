@@ -344,9 +344,9 @@ that the pattern `kybernos-` designates only kybers. A spec repository named
 `kybernos-mcp` would come up as a false positive on every search and would have to
 be renamed. The meta lives under the organization: `github.com/kybernos/kybernos`.
 
-**Trust level to display:** `officiel` (`kybernos-<name>` under the `kybernos`
-organization) or `contribué` (`kybernos-contrib-<name>`). The level is read in the
-**name**, not only in the organization — `officiel` means *reviewed*, not
+**Trust level to display:** `official` (`kybernos-<name>` under the `kybernos`
+organization) or `contributed` (`kybernos-contrib-<name>`). The level is read in the
+**name**, not only in the organization — `official` means *reviewed*, not
 *harmless*, and the human review of prompts remains mandatory in both cases. A
 third-party repository named `kybernos-<name>` **without** the `contrib-` infix is
 a usurpation: flag it, do not display it as official.

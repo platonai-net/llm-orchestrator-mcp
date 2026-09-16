@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 #
-# Installation de l'orchestrateur LLM multi-plateforme (serveur MCP).
-# Inscrit automatiquement le serveur dans : Opencode, Cursor, Claude Code, Windsurf.
+# Installation of the multi-platform LLM orchestrator (MCP server).
+# Automatically registers the server in: Opencode, Cursor, Claude Code, Windsurf.
 #
 set -euo pipefail
 
 REPO_RAW="https://raw.githubusercontent.com/platonai-net/llm-orchestrator-mcp/main"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "")"
 
-# ---------- Intégrité : SHA-256 épinglés des fichiers téléchargés ----------
-# Ce sont les empreintes des fichiers actuels du dépôt officiel. Toute modification
-# de install.sh + fichiers servis doit mettre à jour ces empreintes à l'identique.
-readonly SERVER_SHA256="22f0810a17b4c2279eb0cb810bc643ed10705960352e7f0c900b73928344602d"
+# ---------- Integrity: pinned SHA-256 of the downloaded files ----------
+# These are the fingerprints of the current files in the official repository. Any change
+# to install.sh + served files must update these fingerprints identically.
+readonly SERVER_SHA256="3059667e31081d6eb765dd3e609c8967a5cdf8b13cd14d15d4d6402aea83b91e"
 readonly HOSTED_SHA256="117bcf11a69b3047d1f2c1d68cae6338a90f2094ef465d20589f2065a2b2532e"
 readonly MEMORY_SHA256="7f5136c9e868f61bbdad1e2fa1bcddf9352e8006da6502c06b82fb04e5d39c0f"
-readonly MODELS_SHA256="999be1b498d1fbc5e714c73a86d8250357629af6ca49d7299c8f4a485a331e66"
+readonly MODELS_SHA256="e5070790f3bd914e03738a49b027ae78e72bf34ff9952d6ec033777fc59aa2ad"
 sha256_of() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'
   elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" 2>/dev/null | awk '{print $1}'
@@ -26,9 +26,9 @@ verify_sha256() {
   [ -n "$actual" ] && [ "$actual" = "$expected" ]
 }
 
-# ---------- Résolution du dossier d'installation ----------
-# - Exécution depuis un clone  -> dossier du script
-# - Exécution via curl | bash  -> ~/.llm-orchestrator-mcp (téléchargement auto)
+# ---------- Install directory resolution ----------
+# - Run from a clone      -> script directory
+# - Run via curl | bash   -> ~/.llm-orchestrator-mcp (automatic download)
 if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/server.js" ]; then
   DIR="$SCRIPT_DIR"
 else
@@ -37,11 +37,11 @@ else
   for f in server.js hosted.js memory.js models.json; do
     if [ ! -f "$DIR/$f" ]; then
       if ! curl -fsSL "$REPO_RAW/$f" -o "$DIR/$f"; then
-        echo "Téléchargement de $f impossible" >&2; rm -f "$DIR/$f"; exit 1
+        echo "Download of $f failed" >&2; rm -f "$DIR/$f"; exit 1
       fi
     fi
   done
-  # Vérification d'intégrité (échec = abandon immédiat, jamais d'exécution sans contrôle)
+  # Integrity check (failure = immediate abort, never run without verification)
   for f in server.js hosted.js memory.js models.json; do
     case "$f" in
       server.js)  expected="$SERVER_SHA256" ;;
@@ -50,11 +50,11 @@ else
       models.json) expected="$MODELS_SHA256" ;;
     esac
     if ! verify_sha256 "$DIR/$f" "$expected"; then
-      echo "ÉCHEC d'intégrité : $f ne correspond pas à l'empreinte officielle (SHA-256). Refusez d'exécuter ce fichier." >&2
+      echo "INTEGRITY FAILURE: $f does not match the official fingerprint (SHA-256). Refuse to run this file." >&2
       exit 1
     fi
   done
-  echo "[install] Intégrité vérifiée (SHA-256) des 4 fichiers téléchargés."
+  echo "[install] Integrity verified (SHA-256) for the 4 downloaded files."
 fi
 SERVER="$DIR/server.js"
 NAME="llm-orchestrator"
@@ -62,39 +62,39 @@ NAME="llm-orchestrator"
 log()  { printf '\033[1;32m[install]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[install]\033[0m %s\n' "$*"; }
 
-# ---------- Vérifications ----------
+# ---------- Checks ----------
 if ! command -v node >/dev/null 2>&1; then
-  echo "node (>= 18) est requis : https://nodejs.org" >&2; exit 1
+  echo "node (>= 18) is required: https://nodejs.org" >&2; exit 1
 fi
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 if [ "$NODE_MAJOR" -lt 18 ]; then
-  echo "Node >= 18 requis (trouvé : $(node -v))." >&2; exit 1
+  echo "Node >= 18 required (found: $(node -v))." >&2; exit 1
 fi
 
 if [ ! -f "$SERVER" ]; then
-  echo "server.js introuvable dans $DIR" >&2; exit 1
+  echo "server.js not found in $DIR" >&2; exit 1
 fi
 
 chmod +x "$SERVER" 2>/dev/null || true
 
-# ---------- Backend : local | hosted | both ----------
-# La clé hébergée, si fournie, est écrite UNIQUEMENT dans l'env block des
-# configs client (hors du repo) — jamais dans un fichier du dépôt.
+# ---------- Backend: local | hosted | both ----------
+# The hosted key, if provided, is written ONLY into the env block of the
+# client configs (outside the repo) — never into a file of the repository.
 BACKEND_MODE="${KYBERNOS_MCP_BACKEND:-}"
 HOSTED_URL="${KYBERNOS_MCP_URL:-}"
 HOSTED_KEY="${KYBERNOS_API_KEY:-}"
 if [ -z "$BACKEND_MODE" ] && [ -t 0 ] && [ -t 1 ]; then
-  printf '\nBackend du serveur :\n  1) local  — tes propres clés LLM (défaut, gratuit)\n  2) hosted — outils Kybernos via le proxy (clé virtuelle kys-...)\n  3) both   — les deux\n'
-  read -rp "Choix [1] : " backend_choice
+  printf '\nServer backend:\n  1) local  — your own LLM keys (default, free)\n  2) hosted — Kybernos tools through the proxy (virtual kys-... key)\n  3) both   — the two of them\n'
+  read -rp "Choice [1]: " backend_choice
   case "$backend_choice" in
     2) BACKEND_MODE="hosted" ;;
     3) BACKEND_MODE="both" ;;
     *) BACKEND_MODE="local" ;;
   esac
   if [ "$BACKEND_MODE" != "local" ]; then
-    read -rp "URL du proxy Kybernos [https://api.kybernos.app] : " HOSTED_URL
+    read -rp "Kybernos proxy URL [https://api.kybernos.app]: " HOSTED_URL
     HOSTED_URL="${HOSTED_URL:-https://api.kybernos.app}"
-    printf 'Clé virtuelle Kybernos (kys-...) : '
+    printf 'Kybernos virtual key (kys-...): '
     read -rs HOSTED_KEY
     printf '\n'
   fi

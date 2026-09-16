@@ -6,7 +6,7 @@ const path = require("path");
 const os = require("os");
 
 /* ------------------------------------------------------------------ */
-/*  Configuration : catalogue de modèles + routage                     */
+/*  Configuration: model catalog + routing                             */
 /* ------------------------------------------------------------------ */
 
 const CONFIG_ENV = process.env.LLM_ORCH_CONFIG;
@@ -34,8 +34,8 @@ for (const p of CONFIG_PATHS) {
 
 /* ------------------------------------------------------------------ */
 /*  Backend mode : local | hosted | both (KYBERNOS_MCP_BACKEND)        */
-/*  local = stdio-only (inchangé). hosted/both = outils du proxy       */
-/*  Kybernos fusionnés + transférés via hosted.js.                     */
+/*  local = stdio-only (unchanged). hosted/both = Kybernos proxy       */
+/*  tools merged + forwarded via hosted.js.                            */
 /* ------------------------------------------------------------------ */
 
 const hosted = require("./hosted");
@@ -114,9 +114,9 @@ const CATALOG = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Découverte dynamique des modèles                                   */
-/*  Sources : clés API dans l'env, listing /models, models.local.json, */
-/*  variables *_MODEL / LLM_ORCH_MODELS. N'importe quel LLM marche.    */
+/*  Dynamic model discovery                                            */
+/*  Sources: API keys from env, /models listing, models.local.json,    */
+/*  *_MODEL / LLM_ORCH_MODELS variables. Any LLM works.                */
 /* ------------------------------------------------------------------ */
 
 const LOCAL_JSON_PATHS = [
@@ -134,7 +134,7 @@ function loadLocalModels() {
   return [];
 }
 
-// Heuristiques de classification d'un modèle découvert
+// Heuristics for classifying a discovered model
 function guessQuality(modelId) {
   const id = modelId.toLowerCase();
   if (/gpt-5|opus|gemini-3|claude-4|sonnet-4/.test(id)) return 10;
@@ -158,7 +158,7 @@ function guessContext(modelId) {
   return 128000;
 }
 
-// Endpoints de listing de modèles par style d'API
+// Model listing endpoints per API style
 async function listProviderModels(cfg) {
   const apiKey = process.env[cfg.apiKeyEnv];
   if (!apiKey) return [];
@@ -193,11 +193,11 @@ async function listProviderModels(cfg) {
   }
 }
 
-// Construit PROVIDERS : catalogue de base + découvertes (env, listing API, local)
+// Builds PROVIDERS: base catalog + discoveries (env, API listing, local)
 function buildProviders() {
   const providers = { ...CATALOG };
 
-  // 1) Modèles personnalisés via variables d'environnement
+  // 1) Custom models via environment variables
   //    LLM_ORCH_MODELS="openai:gpt-4.1-mini,anthropic:claude-3-5-haiku,ollama:qwen2.5-coder:7b"
   if (process.env.LLM_ORCH_MODELS) {
     for (const raw of process.env.LLM_ORCH_MODELS.split(",")) {
@@ -226,7 +226,7 @@ function buildProviders() {
     }
   }
 
-  // 2) models.local.json : n'importe quel fournisseur, sans modifier le dépôt
+  // 2) models.local.json: any provider, without modifying the repository
   //    [{ "id":"qwen-coder", "provider":"ollama", "baseUrl":"http://localhost:11434/v1", "model":"qwen2.5-coder:7b", "apiKeyEnv":"...", "contextTokens":32768 }]
   for (const m of loadLocalModels()) {
     if (!m || !m.model || !m.provider) continue;
@@ -245,12 +245,12 @@ function buildProviders() {
     };
   }
 
-  // 3) Listing dynamique /models — géré de façon asynchrone par buildProvidersAsync()
+  // 3) Dynamic /models listing — handled asynchronously by buildProvidersAsync()
   return providers;
 }
 
 async function buildProvidersAsync() {
-  const providers = buildProviders(); // env + local d'abord (synchrone)
+  const providers = buildProviders(); // env + local first (synchronous)
   const disc = { enabled: true, maxPerProvider: 6, maxTotal: 24, ...(config.discovery || {}) };
   if (!disc.enabled) return providers;
   const seen = new Set(Object.values(providers).map((p) => p.model));
@@ -283,7 +283,7 @@ async function buildProvidersAsync() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Client HTTP minimal (fetch natif, Node >= 18)                      */
+/*  Minimal HTTP client (native fetch, Node >= 18)                     */
 /* ------------------------------------------------------------------ */
 
 function classifyProviderError(status, body) {
@@ -356,12 +356,12 @@ async function chatOnce(cfg, { system, user, maxTokens }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Santé & sélection du meilleur modèle                               */
+/*  Health & best-model selection                                      */
 /* ------------------------------------------------------------------ */
 
 function scoreModel(entry, latencyMs, weights) {
   const w = { ...{ health: 40, latency: 30, context: 20, quality: 10 }, ...weights };
-  const health = 100; // présent + réponse valide => opérationnel
+  const health = 100; // present + valid response => operational
   const latencyScore = Math.max(0, 100 - latencyMs / 50); // 50 ms = +1 pt ; 5 s = 0 pt
   const contextScore = Math.min(100, (entry.contextTokens / 100000) * 5); // 100k = 5, 1M = 50, 2M = 100
   const qualityScore = entry.quality * 10;
@@ -370,8 +370,8 @@ function scoreModel(entry, latencyMs, weights) {
 
 const state = {
   probed: false,
-  providers: {},     // catalogue dynamique (détection des LLM disponibles)
-  discoveredFrom: [],// sources de détection utilisées
+  providers: {},     // dynamic catalog (detection of available LLMs)
+  discoveredFrom: [],// detection sources used
   scores: {},        // id -> score
   latency: {},       // id -> ms
   status: {},        // id -> { ok, kind, detail }
@@ -445,7 +445,7 @@ function inferTaskType(text) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Serveur MCP (JSON-RPC 2.0 sur stdio, zéro dépendance)              */
+/*  MCP server (JSON-RPC 2.0 over stdio, zero dependency)              */
 /* ------------------------------------------------------------------ */
 
 const PROTOCOL_VERSION = "2024-11-05";
@@ -701,7 +701,7 @@ function describe(id) {
   return { label: p.label, provider: p.provider, model: p.model, contextTokens: p.contextTokens, strengths: p.strengths };
 }
 
-/* ------------------------- boucle JSON-RPC ------------------------- */
+/* -------------------------- loop JSON-RPC -------------------------- */
 
 function send(obj) {
   process.stdout.write(JSON.stringify(obj) + "\n");
@@ -737,7 +737,7 @@ async function handleMessage(line) {
     });
     return;
   }
-  if (method === "notifications/initialized") return; // pas de réponse
+  if (method === "notifications/initialized") return; // no response
   if (method === "ping") { send({ jsonrpc: "2.0", id, result: {} }); return; }
   if (method === "tools/list") {
     send({ jsonrpc: "2.0", id, result: { tools: toolSchema() } });
