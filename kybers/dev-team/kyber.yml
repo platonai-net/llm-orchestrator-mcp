@@ -18,9 +18,17 @@ mission: >-
   security audit, does not write product documentation, does not design an
   interface.
 
-# Shape: PIPELINE WITH A GATE. The topology is not an aesthetic choice, it is the
-# real shape of the work: each stage consumes the output of the previous one
-# (map → batches → specs → GO → implementation → test → refutation → delivery).
+# Shape: PIPELINE WITH A TRIAGE AND A GATE. The topology is not an aesthetic
+# choice, it is the real shape of the work: each stage consumes the output of the
+# previous one (triage → map → batches → specs → GO → implementation → test →
+# refutation → delivery → memory).
+#
+# The first stage classifies the request, and the RENDERING branches on its
+# verdict (rule 2026-09-21): a simple request runs 7 agents instead of 10 to 20,
+# without ever dropping the spec stage, the spec gate or the visual test. See the
+# `triage` stage and the machine-readable `rendu-simple:` line it carries.
+# The declared `stages` list is the COMPLETE path; the shortened path is a
+# rendering of this same declaration, never a different declaration.
 #
 # Why not the other shapes:
 #   - `pool` is ruled out in fact: a reservoir has no dependency, therefore
@@ -50,16 +58,48 @@ elucidation: required
 maxDepth: 1
 
 stages:
+  # TRIAGE — le chemin dépend de la demande (règle 2026-09-21). Le format ne sait
+  # pas exprimer un étage conditionnel : le triage ÉCRIT son verdict et c'est le
+  # RENDU qui branche (skill `kyber-topology`, § « Les étages conditionnels »).
+  #
+  #   simple  = UN lot, ≤ 3 fichiers, aucun fichier sensible (auth, RLS, secrets,
+  #             billing, migration), aucun changement de schéma ni d'API publique.
+  #   complet = tout le reste. Un seul fichier sensible suffit à forcer complet,
+  #             sans dérogation possible.
+  #
+  # Rendu « simple » — 7 agents au lieu de 10 à 20 :
+  #   triage → specification → porte-spec → implementation → test → livraison → memoire
+  #
+  # On retire `cartographie`, `cadrage` et `revue-adversariale` : `simple` veut
+  # dire UN lot, donc il n'y a rien à cartographier ni à découper. On GARDE
+  # `specification` — c'est elle qui porte la DoD exécutable des six sections, et
+  # la fusionner dans `cadrage` aurait fait disparaître le seul contrôle
+  # automatique de la stratégie de test. On garde la PORTE et le TEST VISUEL, sans
+  # exception : c'est précisément ce qu'une demande simple ne peut pas négocier.
+  #
+  # La ligne `rendu-simple:` ci-dessous est LUE PAR LE HARNAIS
+  # (scripts/test-kyber-dev-team-gates.mjs) : il refuse tout raccourci qui
+  # supprimerait la porte, le test ou la spécification, ou qui retirerait un étage
+  # hors des trois raccourcissables. Un contrat lisible par une machine, donc.
+  # rendu-simple: triage, specification, porte-spec, implementation, test, livraison, memoire
+  - id: triage
+    roles: [trieur]
+    mode: once
+    definitionOfDone:
+      - test -f "docs/tests/triage.md"
+      - 'grep -qE "^(chemin|path): (simple|complet)$" "docs/tests/triage.md"'
+      - grep -q "raison" "docs/tests/triage.md"
+
   # Read-only reconnaissance. No parallelism is declared here: `mode: forEach`
-  # iterates over `inputs`, and this root stage has none, so there is nothing to
-  # iterate over. The validator no longer refuses the construct — it warns — but
-  # declaring `forEach` on an empty input set would not produce the fan-out the
-  # kybernos-parallel doctrine allows ("N read-only scouts over disjoint areas").
-  # That fan-out is therefore carried by the mapper's prompt rather than by the
-  # topology. See the report.
+  # iterates over `inputs`, and a single upstream stage (`triage`) is not the
+  # "N read-only scouts over disjoint areas" the kybernos-parallel doctrine
+  # allows. The validator no longer refuses the construct — it warns — but the
+  # fan-out stays carried by the mapper's prompt rather than by the topology.
+  # See the report.
   - id: cartographie
     roles: [cartographe]
     mode: once
+    inputs: [triage]
 
   # Framing produces the disjoint batches and the delegation contracts. It
   # produces no code: the orchestrator has `edit: deny` in the doctrine.
@@ -75,6 +115,32 @@ stages:
     mode: forEach
     inputs: [cadrage]
     cap: 6
+    # TEST STRATEGY BEFORE IMPLEMENTATION (rule 2026-09-20, renforcée le
+    # 2026-09-21) : every batch ships docs/tests/<batch>-strategy.md BEFORE any
+    # code is written — replayable e2e journeys (exact commands, real mode),
+    # vision checks (before/after captures compared, render-*-maquette.mjs
+    # model), an INTERACTIVE MOCKUP at DSH's real CSS for any visible surface
+    # (skill `maquette-dsh`: source of truth + executable contract + captures),
+    # unit tests for non-trivial logic, and a DISCRIMINATING DoD (a command that
+    # would also pass on the old code is not a DoD). The gate below refuses a
+    # spec whose strategy file is absent or missing one of the six sections.
+    # "maquette" and "capture" are PRESENT even when not applicable: the section
+    # then says so explicitly ("aucune maquette — lot non visible", with the
+    # reason). A silent omission is a NO-GO.
+    #
+    # The greps are ANCHORED on the section names (`^maquette:`), never on the
+    # bare word: the first version matched the word anywhere, and the harness
+    # proved a strategy with NO mockup section passed it because the *capture*
+    # command was named `render-lot1-maquette.mjs`. A DoD that a filename can
+    # satisfy delivers false GOs — the team's own lesson of 2026-09-18.
+    definitionOfDone:
+      - test -f "docs/tests/<batch>-strategy.md"
+      - 'grep -qE "^e2e:" "docs/tests/<batch>-strategy.md"'
+      - 'grep -qE "^vision:" "docs/tests/<batch>-strategy.md"'
+      - 'grep -qE "^capture:" "docs/tests/<batch>-strategy.md"'
+      - 'grep -qE "^maquette:" "docs/tests/<batch>-strategy.md"'
+      - 'grep -qE "^unit:" "docs/tests/<batch>-strategy.md"'
+      - 'grep -qE "^DoD:" "docs/tests/<batch>-strategy.md"'
 
   # THE GATE. Here, and only here, is the launch of an implementation decided.
   # The kybernos-parallel doctrine is unambiguous: "Zero speculative launch
@@ -89,6 +155,14 @@ stages:
   # `inputs` that cites a stage declared later, so a back edge is a cycle = an
   # error. The AMEND cycle (bounded at 2, then escalation) is therefore
   # expressible only in prose, in the checker's and the orchestrator's prompts.
+  #
+  # NO STRATEGY, NO GO (rule 2026-09-20, renforcée le 2026-09-21): the verdict is
+  # NO-GO for any spec whose docs/tests/<batch>-strategy.md is absent or
+  # incomplete (e2e + vision + capture + maquette + unit + discriminating DoD) —
+  # the rule is enforced by the specification stage's definitionOfDone above; the
+  # gate owns the verdict. NO VISUAL PROOF, NO GO applies to every visible
+  # surface: a strategy that names neither a capture command nor an interactive
+  # mockup contract for a visible change is NO-GO, whatever the code quality.
   - id: porte-spec
     roles: [validateur-spec]
     mode: once
@@ -127,6 +201,7 @@ stages:
       - pnpm -w run typecheck
       - pnpm test -- <batch-test-file>
       - grep -q "<exact-invariant-written-in-the-spec>" <file-written-by-the-batch>
+      - node scripts/check-maquette.mjs <batch-maquette-dir>
       - test -z "$(git diff --name-only | grep -v -E '<batch-paths>')"
 
   # The journey test runs once, over the complete campaign: the kybernos-parallel
@@ -145,6 +220,7 @@ stages:
       - pnpm -w run build
       - pnpm test
       - pnpm exec playwright test --grep <journey-name>
+      - node scripts/render-<sujet>-maquette.mjs
       - curl -sf <endpoint-url> | jq -e '<field-assertion>'
 
   # The refutation stage. `adversarial: true` is what distinguishes it from a
@@ -164,10 +240,13 @@ stages:
 
   # Delivery and traceability. The gate below expresses the kybernos doctrine's
   # most important gate — "Push to main/staging = explicit human validation
-  # (production gate)". It is TERMINAL: no stage is downstream, so it guards the
-  # delivery itself. An earlier revision of this file omitted it on the belief
+  # (production gate)". An earlier revision of this file omitted it on the belief
   # that a terminal gate was structurally impossible; that belief was false, and
   # the validator now accepts it explicitly.
+  #
+  # It is no longer terminal: the `memoire` stage depends on it, so the gate now
+  # guards a real downstream step — the human validation of the delivery AND of
+  # the lesson proposal.
   #
   # What remains true, and must be reported rather than hidden: no platform
   # primitive enforces a gate. On most platforms this gate survives only as the
@@ -179,6 +258,26 @@ stages:
     mode: once
     inputs: [revue-adversariale, test]
     gate: true
+
+  # MÉMOIRE (règle 2026-09-21). The learning loop existed in prose — the skill
+  # `kyber-memory` was declared — but NO stage owned the DISTILL step. Measured
+  # on the real ledger: the run of 2026-09-21T11:51 left ONE line (implementeur)
+  # and no lesson for that run at all; the two lessons written three seconds
+  # later belong to another subject. Declaring a skill does not execute it.
+  #
+  # This stage owns DISTILL and it PROPOSES: it writes the verdict per role that
+  # ran, the candidate lesson in one falsifiable sentence (or the explicit line
+  # "aucune: <raison>" when no expectation was contradicted), and the LEAD
+  # presents it to the human. `memory.cjs lesson` runs only after agreement —
+  # a lesson nobody validated is the exact failure this stage exists to stop.
+  - id: memoire
+    roles: [chroniqueur]
+    mode: once
+    inputs: [livraison]
+    definitionOfDone:
+      - test -f "docs/tests/<chantier>-lecons.md"
+      - 'grep -qE "^(lecon|lesson|aucune): " "docs/tests/<chantier>-lecons.md"'
+      - node ~/.dsh/kybers/memory.cjs stats --kyber dev-team
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Roles.
@@ -215,6 +314,26 @@ roles:
       anchor is a failed mapping. You do not judge, you do not rank, you propose
       no fix, and you never write or modify a file: your children are read-only by
       construction.
+
+  # The triage is a SEPARATE trade from the orchestrator, and the validator is
+  # right to force that: the same role may not be reached by two stages, and
+  # merging them would let the framing decide its own path — the one decision
+  # that must be stated before the framing exists.
+  - id: trieur
+    role: triage
+    needs: { modality: text, tier: fast, context: standard }
+    provider: ollama-cloud
+    model: deepseek-v4.1-flash
+    prompt: >-
+      You classify ONE request before any work starts, and you write the verdict
+      to docs/tests/triage.md with exactly three lines: `chemin: simple` or
+      `chemin: complet`, `raison: <one sentence>`, and `sensibles: <files or
+      none>`. `simple` demands ALL of: one batch, at most three files, no file
+      touching auth, RLS, secrets, billing or migrations, no schema change, no
+      public API change. One sensitive file, one doubt, one file you cannot
+      classify: you answer `complet`. You forbid yourself to guess a perimeter
+      you have not read, to answer `simple` to save time, and to write anything
+      other than the verdict file.
 
   - id: orchestrateur
     role: orchestrator
@@ -366,15 +485,42 @@ roles:
       without explicit human validation, and to create labels outside the
       repository's typed vocabulary.
 
+  # The memory keeper owes nothing to the delivery: its verdict is about the
+  # EXPECTATION, not the code. It runs last, on the whole campaign, and it has
+  # the power — and the duty — to answer "aucune leçon".
+  - id: chroniqueur
+    role: memory-keeper
+    needs: { modality: text, tier: fast, context: standard }
+    provider: ollama-cloud
+    model: deepseek-v4.1-flash
+    prompt: >-
+      You keep the kyber's memory. You run the DISTILL step of `kyber-memory`
+      after a campaign and you produce docs/tests/<chantier>-lecons.md: one line
+      per role that actually ran — `lecon: <verdict>` when the result
+      CONTRADICTED the expectation, `aucune: <raison>` when it confirmed it — and
+      for each contradiction ONE falsifiable sentence of 500 characters at most
+      with 1 to 5 lowercase tags. A success that matched the hypothesis teaches
+      nothing: you write "aucune" rather than invent a lesson. You record the
+      ledger with `memory.cjs record` for every role that ran, carrying
+      `--attempts`, `--specialty` and a factual `--note`. You PROPOSE the
+      candidate lesson to the human and you run `memory.cjs lesson` only after
+      agreement — a lesson nobody validated is a lesson nobody will use. You
+      forbid yourself to store an unvalidated lesson, to write any reasoning
+      text, to present a score as a measurement of model quality, and to close
+      the campaign before the proposal has been shown.
+
 memory: dev-team
 
 # Only the skills actually present in the preset are declared: a missing skill is
 # a hard error, and an invented name makes the kyber uninstallable. The team's
-# domain content is in the prompts, not here.
+# domain content is in the prompts, not here. `maquette-dsh` travels WITH the
+# kyber (kybers/dev-team/skills/) because "an interactive mockup for every
+# visible change" is a rule of this team, not a platform option.
 skills:
   - kyber-topology
   - kyber-routing
   - kyber-memory
+  - maquette-dsh
 
 # Connector requirements: NONE. This team works on the local repository with the
 # tools already present in the preset (read, search, shell, git). Do not declare
