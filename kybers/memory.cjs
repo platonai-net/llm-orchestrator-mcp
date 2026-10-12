@@ -41,8 +41,30 @@
  *   node kybers/memory.cjs route  --kyber dev-team --role implementeur \
  *     [--provider P --model M]      # the learned arm, or the hypothesis
  *   node kybers/memory.cjs lesson  --kyber dev-team --text "..." --tags a,b
+ *   node kybers/memory.cjs lessons --kyber dev-team [--tag t] [--q mot] \
+ *     [--limit N] [--all]        # relire les leçons (le seul moyen de les
+ *                                # retrouver sans les recopier dans AGENTS.md)
+ *   node kybers/memory.cjs consolidate --kyber dev-team
+ *                                # dédupliquer ; les doublons partent à
+ *                                # lessons.archive.jsonl, jamais à la poubelle
  *   node kybers/memory.cjs used    --kyber dev-team --index 0
  *   node kybers/memory.cjs stats   [--kyber dev-team]
+ *
+ * WHY `lessons` AND `consolidate` EXIST (2026-09-22)
+ *
+ * The lesson store was WRITE-ONLY from the outside: `lesson` appended, and the
+ * 51st lesson silently DESTROYED the least useful one. Nobody could read the
+ * store back without opening the JSONL by hand, so the practical way to "keep"
+ * a lesson was to paste it into the global AGENTS.md — which is loaded in full
+ * into every session. That is how a memory store stays empty while the prompt
+ * bloats: the readable tier grew, the durable tier was write-only and lossy.
+ *
+ * Two fixes, both here:
+ *   · `lessons` makes the store readable (by kyber, by tag, by free text) so
+ *     nothing needs to be copied into a prose file to be findable;
+ *   · eviction now ARCHIVES to `lessons.archive.jsonl` — an overflow is
+ *     recoverable, and `consolidate` can merge duplicates deliberately instead
+ *     of letting the cap decide at random.
  */
 
 "use strict";
@@ -76,6 +98,36 @@ const MIN_OBSERVATIONS = 3;
 const MIN_MARGIN = 0.15;
 
 const OUTCOMES = ["success", "failure", "blocked"];
+
+/* Where an evicted or merged lesson goes. Append-only on purpose: the file is
+   never rewritten, so a bad `consolidate` cannot lose anything. */
+const LESSONS_ARCHIVE = "lessons.archive.jsonl";
+
+/* Comparable form of a lesson. Two lessons written months apart about the same
+   trap differ in punctuation, case and accents — not in meaning. This is what
+   `consolidate` compares; it is deliberately conservative (it will not merge
+   paraphrases, only near-identical sentences), because a wrong merge destroys
+   a lesson that the cap would merely have parked. */
+function normText(text) {
+  return String(text)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function archiveLessons(dir, entries, reason) {
+  if (!entries.length) return 0;
+  const now = new Date().toISOString();
+  for (const l of entries) {
+    appendJsonl(
+      path.join(dir, LESSONS_ARCHIVE),
+      Object.assign({}, l, { archivedAt: now, archivedBecause: reason }),
+    );
+  }
+  return entries.length;
+}
 
 function memDir(kyber, override) {
   if (override) return path.resolve(override);
@@ -381,19 +433,35 @@ function cmdLesson(argv) {
 
   /* Eviction by REAL UTILITY, never by creation age: an unused and old lesson
      leaves first; a lesson used twenty times stays even if old — that is
-     precisely the signal that it is useful. */
+     precisely the signal that it is useful.
+
+     Two rules the first version got wrong, both found by test on 2026-09-22:
+
+     · THE LESSON JUST WRITTEN IS NEVER THE ONE EVICTED. It arrives with
+       `uses: 0`, so on a full store it sorted first by usefulness and was
+       destroyed in the same write that created it — the moment ANY other
+       lesson had a non-zero `uses`. Silently: the CLI still reported
+       `{"added": true}`. Learning something and throwing it away is not
+       eviction, it is amnesia.
+     · IT ARCHIVES BEFORE REMOVING. The cap is a working-set limit, not a
+       licence to destroy what someone took the trouble to write. */
   let lessons = readJsonl(file);
   let evicted = null;
   if (lessons.length > LESSONS_MAX_COUNT) {
+    const fraiche = lessons.length - 1;
     const sorted = lessons
       .map((l, i) => ({ l, i }))
+      .filter((x) => x.i !== fraiche)
       .sort((a, b) => (a.l.uses || 0) - (b.l.uses || 0) || Date.parse(a.l.ts) - Date.parse(b.l.ts));
-    const doomed = new Set(sorted.slice(0, lessons.length - LESSONS_MAX_COUNT).map((x) => x.i));
-    evicted = lessons.filter((_, i) => doomed.has(i)).map((l) => l.text.slice(0, 60));
+    const aChasser = Math.min(lessons.length - LESSONS_MAX_COUNT, sorted.length);
+    const doomed = new Set(sorted.slice(0, aChasser).map((x) => x.i));
+    const partants = lessons.filter((_, i) => doomed.has(i));
+    archiveLessons(dir, partants, "cap:" + LESSONS_MAX_COUNT);
+    evicted = partants.map((l) => l.text.slice(0, 60));
     lessons = lessons.filter((_, i) => !doomed.has(i));
     fs.writeFileSync(file, lessons.map((l) => JSON.stringify(l)).join("\n") + "\n");
   }
-  return { added: true, chars: capped.length, total: lessons.length, evicted };
+  return { added: true, chars: capped.length, total: lessons.length, evicted, archived: evicted === null ? 0 : evicted.length };
 }
 
 function cmdUsed(argv) {
@@ -407,6 +475,104 @@ function cmdUsed(argv) {
   lessons[idx].lastUsed = new Date().toISOString();
   fs.writeFileSync(file, lessons.map((l) => JSON.stringify(l)).join("\n") + "\n");
   return { index: idx, uses: lessons[idx].uses };
+}
+
+/* ----------------------------------------------------------------- lessons */
+
+/* The READ half of the store. Without it the only way to keep a lesson
+   findable was to paste it into AGENTS.md — the prose tier that is loaded in
+   full into every session. Read the store instead. */
+function cmdLessons(argv) {
+  const home = process.env.DSH_HOME || path.join(os.homedir(), ".dsh");
+  const root = argv.dir ? path.resolve(argv.dir) : path.join(home, "kybers");
+  let kybers;
+  if (argv.all) {
+    kybers = fs
+      .readdirSync(root, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+      .map((d) => d.name);
+  } else {
+    if (!argv.kyber) throw new Error("lessons exige --kyber <nom> (ou --all)");
+    kybers = [argv.kyber];
+  }
+  const tag = argv.tag ? String(argv.tag).toLowerCase() : null;
+  const q = argv.q ? normText(argv.q) : null;
+  const limit = argv.limit === undefined ? 20 : Number(argv.limit);
+  if (!Number.isInteger(limit) || limit < 0) throw new Error("--limit attend un entier >= 0");
+
+  const out = [];
+  for (const k of kybers) {
+    const dir = argv.dir ? root : path.join(root, k, "memory");
+    const lessons = readJsonl(path.join(dir, "lessons.jsonl"));
+    const archive = readJsonl(path.join(dir, LESSONS_ARCHIVE));
+    const gardees = lessons.filter((l) => {
+      if (tag && !(Array.isArray(l.tags) ? l.tags : []).includes(tag)) return false;
+      if (q && normText(l.text).indexOf(q) === -1) return false;
+      return true;
+    });
+    /* Index is the RAW index in lessons.jsonl — it is what `used --index n`
+       expects. Re-indexing after a filter would make `used` bump the wrong
+       lesson, which is exactly the silent corruption this store exists to
+       avoid. */
+    const lignes = lessons
+      .map((l, i) => ({ i, l }))
+      .filter((x) => gardees.indexOf(x.l) !== -1)
+      .sort((a, b) => Date.parse(b.l.ts) - Date.parse(a.l.ts) || b.i - a.i);
+    out.push({
+      kyber: k,
+      total: lessons.length,
+      archived: archive.length,
+      matches: lignes.length,
+      shown: Math.min(limit, lignes.length),
+      lessons: lignes.slice(0, limit).map((x) => ({
+        index: x.i,
+        ts: x.l.ts,
+        uses: x.l.uses || 0,
+        tags: x.l.tags || [],
+        text: x.l.text,
+      })),
+    });
+  }
+  return { kybers: out };
+}
+
+/* Deliberate merge. The cap evicts by usefulness; this evicts by MEANING —
+   the same trap written twice is one lesson, and the second copy is noise that
+   displaces a genuinely different one. It keeps the most-used (then most
+   recent) copy, sums the `uses`, and archives the rest. */
+function cmdConsolidate(argv) {
+  const kyber = argv.kyber;
+  if (!kyber) throw new Error("consolidate exige --kyber <nom>");
+  const dir = memDir(kyber, argv.dir);
+  const file = path.join(dir, "lessons.jsonl");
+  const lessons = readJsonl(file);
+  const parForme = new Map();
+  const garder = [];
+  const doublons = [];
+  for (const l of lessons) {
+    const cle = normText(l.text);
+    const prevu = parForme.get(cle);
+    if (prevu === undefined) {
+      parForme.set(cle, garder.length);
+      garder.push(l);
+      continue;
+    }
+    const a = garder[prevu];
+    const mieux = (l.uses || 0) > (a.uses || 0) || ((l.uses || 0) === (a.uses || 0) && Date.parse(l.ts) > Date.parse(a.ts));
+    if (mieux) {
+      garder[prevu] = l;
+      doublons.push(a);
+    } else {
+      doublons.push(l);
+    }
+    garder[prevu].uses = (garder[prevu].uses || 0) + (mieux ? (a.uses || 0) : (l.uses || 0));
+  }
+  if (argv["dry-run"]) {
+    return { kyber, dryRun: true, before: lessons.length, after: garder.length, merged: doublons.length, texts: doublons.map((l) => l.text.slice(0, 80)) };
+  }
+  archiveLessons(dir, doublons, "consolidate");
+  fs.writeFileSync(file, garder.map((l) => JSON.stringify(l)).join("\n") + (garder.length ? "\n" : ""));
+  return { kyber, before: lessons.length, after: garder.length, merged: doublons.length, archived: doublons.length };
 }
 
 /* ------------------------------------------------------------------- stats */
@@ -448,7 +614,8 @@ function cmdStats(argv) {
 
 /* -------------------------------------------------------------------- main */
 
-const BOOL_FLAGS = new Set(["help"]);
+/* `all` and `dry-run` are switches, not options: written without a value. */
+const BOOL_FLAGS = new Set(["help", "all", "dry-run"]);
 
 function parseArgs(list) {
   const out = {};
@@ -475,7 +642,7 @@ function main() {
     return 0;
   }
   const argv = parseArgs(rest);
-  const table = { record: cmdRecord, route: cmdRoute, lesson: cmdLesson, used: cmdUsed, stats: cmdStats };
+  const table = { record: cmdRecord, route: cmdRoute, lesson: cmdLesson, used: cmdUsed, lessons: cmdLessons, consolidate: cmdConsolidate, stats: cmdStats };
   const fn = table[cmd];
   if (!fn) {
     console.error(`commande inconnue : ${cmd} (attendu : ${Object.keys(table).join(" | ")})`);
